@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hierarchical-memory"
+version = "0.2.0a1"
+description = "Memoria jerárquica de largo plazo para LLMs locales (solo biblioteca estándar)."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+]
+
+[project.optional-dependencies]
+fast = ["numpy"]
+dev = ["ruff"]
+
+[project.urls]
+Homepage = "https://github.com/mlalejandre/memorIA"
+
+[project.scripts]
+hmem-ui = "interfaz:iniciar"
+hmem-cli = "main:main"
+
+[tool.setuptools]
+package-dir = { "" = "src", "interfaz" = "interfaz" }
+packages = ["interfaz", "ltm"]
+py-modules = ["agente", "bucle", "cartuchos", "config", "corto_plazo", "episodica", "largo_plazo", "llm", "main", "navegacion", "servidor", "vectores"]
+
+[tool.setuptools.package-data]
+interfaz = ["index.html"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E501", "E402", "E701", "E702", "E731", "F401", "F403", "F405"]

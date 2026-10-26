@@ -1,0 +1,1 @@
+# Sin dependencias externas: solo la librería estándar de Python 3.10+.

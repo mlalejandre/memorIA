@@ -1,0 +1,1613 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hierarchical Memory // Consola cognitiva</title>
+<style>
+:root{
+  --bg:#070913;--card:#101426;--card-alt:#151a33;--inp:#0a0d1a;--bd:#212845;--bd-light:#2f3a63;
+  --blue:#4f46e5;--cyan:#06b6d4;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--purple:#a855f7;
+  --tx:#f9fafb;--mu:#8b949e;--mono:SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+body{background:radial-gradient(circle at 50% 0%, #151b3d 0%, var(--bg) 70%);color:var(--tx);min-height:100vh;display:flex;flex-direction:column}
+header{background:rgba(16,20,38,.85);backdrop-filter:blur(10px);border-bottom:1px solid var(--bd);padding:10px 22px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;position:sticky;top:0;z-index:40}
+.brand{display:flex;align-items:center;gap:12px}
+.logo-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--cyan));display:flex;align-items:center;justify-content:center;font-size:1.1rem;box-shadow:0 0 14px rgba(6,182,212,.4)}
+h1{font-size:1.1rem;font-weight:800;letter-spacing:.6px}
+header p{font-size:.7rem;color:var(--mu);font-family:var(--mono)}
+.header-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+.badge{font-size:.72rem;font-weight:700;padding:4px 10px;border-radius:9999px;border:1px solid var(--bd);display:inline-flex;align-items:center;gap:6px}
+.badge.ok{color:var(--green);border-color:rgba(16,185,129,.4);background:rgba(16,185,129,.1)}
+.badge.warn{color:var(--amber);border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.1)}
+.badge.cyan{color:var(--cyan);border-color:rgba(6,182,212,.4);background:rgba(6,182,212,.1)}
+.pulse-dot{width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block;animation:pulse 1.6s infinite}
+@keyframes pulse{0%{opacity:1;transform:scale(1)}50%{opacity:.3;transform:scale(1.2)}100%{opacity:1;transform:scale(1)}}
+
+button{background:var(--card-alt);color:var(--tx);border:1px solid var(--bd);padding:6px 12px;border-radius:7px;font-size:.75rem;font-weight:600;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+button:hover{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 8px rgba(6,182,212,.2)}
+button.send{background:var(--blue);border:none;padding:10px 22px;color:#fff;font-size:.88rem;font-weight:700}
+button.send:disabled{opacity:.5;cursor:not-allowed}
+
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;padding:14px 20px 0}
+.stat-card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.stat-header{display:flex;justify-content:space-between;align-items:center}
+.stat-title{font-size:.74rem;font-weight:700;letter-spacing:.4px;color:var(--mu);text-transform:uppercase}
+.stat-val{font-size:1.15rem;font-weight:800;font-family:var(--mono)}
+.stat-sub{font-size:.68rem;color:var(--mu);display:flex;gap:10px;flex-wrap:wrap}
+
+.gauge{width:100%}.bar{height:7px;border-radius:4px;background:var(--inp);border:1px solid var(--bd);position:relative;overflow:hidden}
+.fill{height:100%;background:linear-gradient(90deg,var(--cyan),var(--blue));transition:width .4s}
+.mark-target{position:absolute;top:0;bottom:0;width:2px;background:var(--cyan)}
+.mark-trigger{position:absolute;top:0;bottom:0;width:2px;background:var(--amber)}
+
+main{display:grid;grid-template-columns:460px 1fr 340px;gap:14px;padding:14px 20px 20px;flex:1;min-height:0}
+.panel{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:0}
+.sec{font-size:.78rem;font-weight:800;letter-spacing:.4px;color:var(--tx)}
+.sec.mu{font-size:.7rem;color:var(--mu)}
+
+.pipe{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.st{padding:7px 9px;border-radius:6px;background:var(--inp);border:1px solid var(--bd);font-size:.71rem;transition:all .3s}
+.st b{display:block;font-size:.72rem}.st span{color:var(--mu);font-size:.63rem}
+.st.run{border-color:var(--cyan);background:rgba(6,182,212,.12);box-shadow:0 0 10px rgba(6,182,212,.2)}
+.st.done{border-color:var(--green);background:rgba(16,185,129,.08)}
+
+.task-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px}
+.t-card{background:var(--inp);border:1px solid var(--bd);border-radius:6px;padding:6px;text-align:center;font-size:.65rem;color:var(--mu);transition:all .3s}
+.t-card b{display:block;font-size:.7rem;color:var(--tx);margin-bottom:2px}
+.t-card.active{border-color:var(--cyan);background:rgba(6,182,212,.15);color:var(--cyan);box-shadow:0 0 10px rgba(6,182,212,.3)}
+.t-card.priority{border-color:var(--amber);background:rgba(245,158,11,.15);color:var(--amber);box-shadow:0 0 10px rgba(245,158,11,.3);grid-column:span 4}
+
+.task-banner{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:9px 12px;display:flex;flex-direction:column;gap:3px}
+.task-banner .lb{font-size:.66rem;font-weight:800;color:var(--cyan);text-transform:uppercase}
+.task-banner .desc{font-size:.76rem;line-height:1.3;font-family:var(--mono)}
+
+.box{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:8px;overflow-y:auto;font-size:.69rem;color:var(--mu);font-family:var(--mono)}
+#logs{height:150px}#ents{height:100%;max-height:calc(100vh - 350px)}
+.e-chip{border-left:3px solid var(--bd);padding:4px 6px;margin-bottom:5px;background:rgba(255,255,255,.02);border-radius:0 4px 4px 0}
+.e-chip.user{border-color:var(--blue)}.e-chip.assistant{border-color:var(--green)}.e-chip.summary{border-color:var(--amber);color:#fde047}
+
+.chat{flex:1;display:flex;flex-direction:column;gap:10px;min-height:0}
+#msgs{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:10px;min-height:300px;padding-right:4px}
+.m{max-width:85%;padding:10px 14px;border-radius:12px;font-size:.9rem;line-height:1.5;white-space:pre-wrap;word-break:break-word}
+.m.u{align-self:flex-end;background:linear-gradient(135deg,var(--blue),#3730a3);color:#fff}
+.m.a{align-self:flex-start;background:var(--inp);border:1px solid var(--bd)}
+.meta{font-size:.67rem;color:var(--mu);margin-top:6px;border-top:1px solid rgba(255,255,255,.06);padding-top:5px;font-family:var(--mono)}
+.source-pill{display:inline-block;background:rgba(6,182,212,.12);color:var(--cyan);border:1px solid rgba(6,182,212,.3);padding:2px 7px;border-radius:4px;margin-top:4px;font-size:.65rem}
+
+textarea{width:100%;min-height:75px;background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;color:var(--tx);font-size:.92rem;resize:vertical;outline:none}
+textarea:focus{border-color:var(--blue);box-shadow:0 0 10px rgba(79,70,229,.2)}
+.row{display:flex;gap:8px;align-items:center}
+
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);backdrop-filter:blur(6px);z-index:90;align-items:center;justify-content:center;padding:20px}
+.modal.open{display:flex}
+.modal-c{background:var(--card);border:1px solid var(--bd-light);border-radius:12px;width:1000px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.7)}
+.modal-h{padding:12px 18px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center}
+.modal-b{padding:14px 18px;overflow-y:auto;flex:1;display:flex;flex-direction:column;gap:12px}
+pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:12px;font-family:var(--mono);font-size:.74rem;color:#a5b4fc;white-space:pre-wrap;overflow-y:auto;flex:1}
+
+@media(max-width:1250px){main{grid-template-columns:1fr;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="logo-icon">🧠</div>
+    <div>
+      <h1>HIERARCHICAL MEMORY // DUAL-MEMORY CONSOLE</h1>
+      <p id="sub-info">Comprobando servidores LLM...</p>
+    </div>
+  </div>
+  <div class="header-actions">
+    <span class="badge warn" id="b-srv"><span class="pulse-dot"></span>Servidores sin verificar</span>
+    <span class="badge cyan" id="b-ltm-state"><span class="pulse-dot"></span>HOMEOSTASIS ACTIVA</span>
+    <button onclick="openCartridgesModal()" style="border-color:var(--amber);color:var(--amber);background:rgba(245,158,11,.15)">💾 Cartuchos: <span id="hdr-cartridge-name" style="margin-left:4px;font-weight:700">Principal</span></button>
+    <button onclick="openGraphModal()" style="border-color:var(--purple);color:var(--purple);background:rgba(168,85,247,.15)">🕸️ Red Neuronal & Sinapsis</button>
+    <button onclick="openExplorer()" style="border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,.15)">🗂️ Gestor & Explorador de Memoria</button>
+    <button onclick="openModal('modal-tree')">🌲 Ver Árbol LTM</button>
+    <button onclick="openModal('modal-ingest')">📥 Ingestar Libro/Paper</button>
+    <button onclick="openDebug()">🛠️ Diagnóstico & Bugs</button>
+  </div>
+</header>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Memoria de Trabajo (Corto Plazo)</span>
+      <span class="badge" id="stm-mode">retrieval</span>
+    </div>
+    <div class="stat-val" id="stm-tokens">0 / 30.0K</div>
+    <div class="gauge">
+      <div class="bar">
+        <div class="fill" id="stm-bar" style="width:0"></div>
+        <div class="mark-target" style="left:60%" title="Target 60%"></div>
+        <div class="mark-trigger" style="left:90%" title="Trigger 90%"></div>
+      </div>
+    </div>
+    <div class="stat-sub">
+      <span id="stm-entries">0 entradas vivas</span>
+      <span id="stm-sums">0 resúmenes jerárquicos</span>
+      <span id="stm-saves">0 tok ahorrados</span>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Memoria Neocortical (Largo Plazo)</span>
+      <span class="badge cyan" id="ltm-tick">Tick #000000</span>
+    </div>
+    <div class="stat-val" id="ltm-cells">0 Células Vivas</div>
+    <div class="stat-sub">
+      <span id="ltm-nodes">0 Nodos de Ontología</span>
+      <span id="ltm-archived">0 Archivadas</span>
+      <span id="ltm-dirty" style="color:var(--amber)">0 Nodos sin describir</span>
+      <span id="ltm-episodes">0 episodios</span>
+      <span id="ltm-vectors">0 vectores</span>
+      <span id="ltm-synapses" style="color:var(--cyan)">0 sinapsis</span>
+    </div>
+  </div>
+
+  <div class="stat-card">
+    <div class="stat-header">
+      <span class="stat-title">Métricas de Recuperación & Auto-Test</span>
+      <span class="badge ok" id="selftest-score">100% Retención</span>
+    </div>
+    <div class="stat-sub" style="margin-top:4px;">
+      <span id="recall-radar">Exact: 0 | BM25: 0 | Sem: 0 | Árbol: 0 | Híbrido: 0</span>
+    </div>
+    <div class="stat-sub">
+      <span id="selftest-counts">Tests OK: 0 | Fallos: 0 | Recuperados: 0</span>
+    </div>
+  </div>
+</div>
+
+<main>
+  <div class="panel">
+    <div class="sec">PIPELINE COGNITIVO EN TIEMPO REAL (GPU 0)</div>
+    <div class="task-grid">
+      <div class="t-card" id="tc-repair"><b>🛠️ Repair</b>Estructura</div>
+      <div class="t-card" id="tc-decay"><b>🍂 Decay</b>Olvido</div>
+      <div class="t-card" id="tc-describe"><b>📝 Describe</b>Síntesis</div>
+      <div class="t-card" id="tc-dedupe"><b>🧩 Dedupe</b>Fusión</div>
+      <div class="t-card" id="tc-selftest"><b>🧪 Self-Test</b>Prueba</div>
+      <div class="t-card" id="tc-reevaluate"><b>⚖️ Reeval</b>Importancia</div>
+      <div class="t-card" id="tc-split"><b>✂️ Split</b>División</div>
+      <div class="t-card" id="tc-merge"><b>🔀 Merge</b>Ramas</div>
+      <div class="t-card" id="tc-embed"><b>🧭 Embed</b>Vectores</div>
+      <div class="t-card priority" id="tc-USER_PRIORITY" style="display:none"><b>⚡ ATENCIÓN AL USUARIO (ALTA PRIORIDAD)</b>Bucle de sueño en pausa para responder al chat</div>
+    </div>
+
+    <div class="task-banner">
+      <span class="lb" id="cur-task-name">FASE ACTUAL: REPOSO</span>
+      <span class="desc" id="cur-task-desc">Esperando siguiente tick cognitivo...</span>
+    </div>
+
+    <div class="sec mu" style="margin-top:6px">FLUJO DE INTERACCIÓN PARALELO</div>
+    <div class="pipe">
+      <div class="st" id="s-store"><b>1 · Recepción</b><span>prompt ➔ STM</span></div>
+      <div class="st" id="s-answer"><b>3 · Síntesis</b><span>LLM en GPU 1</span></div>
+      <div class="st" id="s-stm_lookup"><b>2a · Corto Plazo</b><span>Búsqueda BM25</span></div>
+      <div class="st" id="s-ltm_query"><b>2b · Largo Plazo</b><span>Búsqueda Híbrida</span></div>
+    </div>
+
+    <div class="row" style="margin-top:4px">
+      <button onclick="act('compact')">✂️ Compactar Corto</button>
+      <button onclick="act('reset_stm')">🗑️ Vaciar Corto</button>
+    </div>
+
+    <div class="sec mu" style="margin-top:6px">LOG DE MANTENIMIENTO HOMEOSTÁTICO</div>
+    <div class="box" id="logs"></div>
+  </div>
+
+  <div class="panel chat">
+    <div id="msgs"></div>
+    <textarea id="inp" placeholder="Pregunta sobre cualquier hecho memorizado o conversa... (Enter envía, Shift+Enter nueva línea)"></textarea>
+    <div class="row" style="justify-content:space-between">
+      <button class="send" id="send" onclick="sendMsg()">Enviar al Agente</button>
+      <span id="hint" style="font-size:.72rem;color:var(--mu);font-family:var(--mono)"></span>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="sec">MEMORIA DE TRABAJO VIVA (STM)</div>
+    <div class="sec mu">Fragmentos y resúmenes que alimentan el contexto inmediato:</div>
+    <div class="box" id="ents"></div>
+  </div>
+</main>
+
+<!-- Modal: Gestor Multi-Cartucho de Memoria -->
+<div class="modal" id="modal-cartridges" onclick="if(event.target===this) closeModal('modal-cartridges')">
+  <div class="modal-c" style="width:1160px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-h">
+      <div class="row" style="gap:10px;">
+        <span style="font-size:1.5rem">💾</span>
+        <div>
+          <h3>Gestor Multi-Cartucho de Memoria</h3>
+          <p style="font-size:0.72rem;color:var(--mu);margin:0;">Conecta varias memorias a la vez para consulta paralela (RRF) y define el cartucho primario de aprendizaje.</p>
+        </div>
+      </div>
+      <div class="row" style="gap:8px;">
+        <button onclick="promptCreateCartridge()" style="border-color:var(--cyan);color:var(--cyan);font-weight:700">+ Nuevo Cartucho</button>
+        <button onclick="document.getElementById('file-import-cartridge').click()" style="border-color:var(--green);color:var(--green);font-weight:700">📥 Importar (.cartridge / .db)</button>
+        <input type="file" id="file-import-cartridge" accept=".cartridge,.tar.gz,.db,.sqlite,.sqlite3" style="display:none" onchange="handleImportFile(event)">
+        <button onclick="closeModal('modal-cartridges')">✕ Cerrar</button>
+      </div>
+    </div>
+    <div style="padding:10px 18px;background:var(--inp);border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;font-size:0.75rem;">
+      <div id="cartridges-summary" style="color:var(--mu);">Cargando estado...</div>
+      <div style="color:var(--mu);font-size:0.7rem;font-family:var(--mono);">💡 Los cartuchos <span style="color:var(--cyan)">conectados</span> se consultan en paralelo en cada turno.</div>
+    </div>
+    <div class="modal-b" style="padding:16px;overflow-y:auto;flex:1;">
+      <div id="cartridges-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;">
+        <div style="color:var(--mu);font-size:0.8rem;">Cargando cartuchos...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 1: Árbol Jerárquico -->
+<div class="modal" id="modal-tree" onclick="if(event.target===this) closeModal('modal-tree')">
+  <div class="modal-c">
+    <div class="modal-h">
+      <h3>🌲 Ontología Neocortical de profundidad adaptativa (Largo Plazo)</h3>
+      <div class="row">
+        <button onclick="copyElement('tree-content')">📋 Copiar Árbol</button>
+        <button onclick="closeModal('modal-tree')">Cerrar</button>
+      </div>
+    </div>
+    <div class="modal-b">
+      <pre id="tree-content">Cargando árbol jerárquico...</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 2: Ingesta Masiva -->
+<div class="modal" id="modal-ingest" onclick="if(event.target===this) closeModal('modal-ingest')">
+  <div class="modal-c" style="width:750px">
+    <div class="modal-h">
+      <h3>📥 Ingestar Capítulo, Libro o Paper en Memoria Larga</h3>
+      <button onclick="closeModal('modal-ingest')">Cerrar</button>
+    </div>
+    <div class="modal-b">
+      <p style="font-size:.75rem;color:var(--mu)">Pega texto técnico masivo. El sistema fragmentará y colocará cada afirmación en la rama correspondiente:</p>
+      <input type="text" id="ingest-src" placeholder="Fuente bibliográfica (Ej: Fisiología Médica Guyton Cap. 25)" style="background:var(--inp);border:1px solid var(--bd);padding:8px;border-radius:6px;color:var(--tx);font-size:.82rem" />
+      <textarea id="ingest-txt" style="min-height:240px" placeholder="Pega aquí el contenido completo..."></textarea>
+      <div class="row" style="justify-content:flex-end">
+        <span id="ingest-progress" style="flex:1;font-size:.75rem;color:var(--mu);font-family:var(--mono)"></span>
+        <button class="send" id="ingest-btn" onclick="submitIngest()">Comenzar Ingesta LTM</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 3: Diagnóstico -->
+<div class="modal" id="modal-debug" onclick="if(event.target===this) closeModal('modal-debug')">
+  <div class="modal-c">
+    <div class="modal-h">
+      <h3>🛠️ Centro de Diagnóstico & Telemetría para Bugs</h3>
+      <div class="row">
+        <button style="background:var(--cyan);color:#000;font-weight:700" onclick="copyBugReport()">📋 Copiar Reporte Completo</button>
+        <button onclick="closeModal('modal-debug')">Cerrar</button>
+      </div>
+    </div>
+    <div class="modal-b">
+      <pre id="debug-json">Cargando diagnóstico completo...</pre>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 4: Explorador & Gestor Visual -->
+<div class="modal" id="modal-explorer" onclick="if(event.target===this) closeModal('modal-explorer')">
+  <div class="modal-c" style="width:1250px;max-width:96vw;height:90vh;">
+    <div class="modal-h">
+      <div class="row" style="gap:10px;">
+        <span style="font-size:1.1rem">🗂️</span>
+        <h3>Navegador & Gestor de Ontología Neocortical (SQLite)</h3>
+      </div>
+      <div class="row">
+        <button onclick="exportToDisk()" style="border-color:var(--green);color:var(--green)">💾 Exportar a Carpetas en Disco</button>
+        <button onclick="closeModal('modal-explorer')">Cerrar</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:360px 1fr;flex:1;min-height:0;overflow:hidden;">
+      <div style="border-right:1px solid var(--bd);display:flex;flex-direction:column;min-height:0;background:var(--inp);">
+        <div style="padding:10px 14px;border-bottom:1px solid var(--bd);display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:.72rem;font-weight:700;color:var(--mu)">ESTRUCTURA DE NIVELES</span>
+          <button onclick="promptCreateNode(null)" style="padding:3px 8px;font-size:.68rem;">+ Carpeta Raíz</button>
+        </div>
+        <div id="explorer-tree" style="flex:1;overflow-y:auto;padding:8px 6px;"></div>
+      </div>
+      <div style="display:flex;flex-direction:column;min-height:0;padding:14px;gap:12px;overflow-y:auto;">
+        <div id="node-detail-banner" style="background:var(--card-alt);border:1px solid var(--bd);border-radius:8px;padding:12px;display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <div class="row" style="gap:8px;">
+              <span class="badge cyan" id="node-level-tag">NIVEL 0</span>
+              <h4 id="node-title" style="font-size:1rem;color:var(--tx)">-</h4>
+            </div>
+            <div class="row">
+              <button onclick="promptCreateNode(selectedNodeId)" style="font-size:.7rem;">+ Subcarpeta</button>
+              <button onclick="promptCreateCell()" style="font-size:.7rem;border-color:var(--cyan);color:var(--cyan)">+ Nueva Célula</button>
+              <button onclick="deleteCurrentNode()" style="font-size:.7rem;border-color:var(--red);color:var(--red)">🗑️ Eliminar Rama</button>
+            </div>
+          </div>
+          <div class="row" style="gap:8px;align-items:center;">
+            <input type="text" id="node-desc-input" placeholder="Descripción del ámbito..." style="flex:1;background:var(--inp);border:1px solid var(--bd);padding:6px 10px;border-radius:6px;color:var(--tx);font-size:.8rem;">
+            <button onclick="saveNodeDescription()" style="font-size:.72rem;">Guardar Descripción</button>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <span class="sec" id="cells-sec-title">CÉLULAS EN ESTE NODO (0)</span>
+          <span id="cells-hint" style="font-size:.68rem;color:var(--mu);font-family:var(--mono)"></span>
+        </div>
+        <div id="explorer-cells-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="modal-cell-edit" onclick="if(event.target===this) closeModal('modal-cell-edit')">
+  <div class="modal-c" style="width:650px;">
+    <div class="modal-h">
+      <h3 id="cell-modal-title">Editar Célula de Memoria</h3>
+      <button onclick="closeModal('modal-cell-edit')">Cerrar</button>
+    </div>
+    <div class="modal-b">
+      <input type="hidden" id="edit-cell-id">
+      <label style="font-size:.72rem;color:var(--mu)">Afirmación atómica o hecho memorizado:</label>
+      <textarea id="edit-cell-text" style="min-height:90px;font-size:.85rem;"></textarea>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <label style="font-size:.72rem;color:var(--mu)">Importancia (1 a 10):</label>
+          <input type="number" id="edit-cell-imp" min="1" max="10" value="7" style="width:100%;background:var(--inp);border:1px solid var(--bd);padding:6px;border-radius:6px;color:var(--tx);">
+        </div>
+        <div>
+          <label style="font-size:.72rem;color:var(--mu)">Tipo de Célula:</label>
+          <select id="edit-cell-kind" style="width:100%;background:var(--inp);border:1px solid var(--bd);padding:6px;border-radius:6px;color:var(--tx);">
+            <option value="dato">Dato (Conocimiento / Hecho)</option>
+            <option value="instruccion">Instrucción (Regla de conducta)</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.72rem;color:var(--mu)">Fuente bibliográfica o procedencia:</label>
+        <input type="text" id="edit-cell-src" placeholder="Ej: Fisiología Renal, Guyton Cap 25..." style="width:100%;background:var(--inp);border:1px solid var(--bd);padding:6px;border-radius:6px;color:var(--tx);font-size:.8rem;">
+      </div>
+      <div class="row" style="justify-content:flex-end;margin-top:8px;">
+        <button class="send" onclick="saveCellFromModal()">Guardar en SQLite</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal 5: Grafo Sináptico -->
+<div class="modal" id="modal-graph" onclick="if(event.target===this) closeGraphModal()">
+  <div class="modal-c" style="width:1400px;max-width:98vw;height:92vh;display:flex;flex-direction:column;">
+    <div class="modal-h">
+      <div class="row" style="gap:10px;">
+        <span style="font-size:1.4rem">🕸️</span>
+        <div>
+          <h3 style="margin:0;font-size:1.05rem;">Red Neuronal Asociativa (Sinapsis Hebbianas)</h3>
+          <p style="font-size:0.68rem;color:var(--mu);margin:0;">Simulación topológica de fuerzas en tiempo real. Células y enlaces asociativos entre conceptos.</p>
+        </div>
+      </div>
+      <div class="row" style="gap:8px;flex-wrap:wrap;">
+        <div class="row" style="gap:6px;align-items:center;">
+          <span style="font-size:0.7rem;color:var(--mu)">Cartucho:</span>
+          <select id="graph-cartridge-select" onchange="loadGraphData(this.value)" style="background:var(--inp);color:var(--tx);border:1px solid var(--bd);padding:4px 8px;border-radius:6px;font-size:0.72rem;outline:none;">
+            <option value="all">🌐 Todos los conectados</option>
+          </select>
+        </div>
+        <button onclick="graphTogglePhysics()" id="btn-graph-physics">⏸️ Pausar Física</button>
+        <button onclick="graphResetView()">🎯 Centrar Mapa</button>
+        <button onclick="closeGraphModal()">✕ Cerrar</button>
+      </div>
+    </div>
+    <div style="flex:1;position:relative;overflow:hidden;background:#05070e;border-radius:0 0 12px 12px;">
+      <canvas id="graph-canvas" style="position:absolute;inset:0;width:100%;height:100%;cursor:grab;"></canvas>
+      <div id="graph-tooltip" style="position:absolute;display:none;pointer-events:none;background:rgba(16,20,38,0.92);border:1px solid var(--cyan);border-radius:8px;padding:8px 12px;font-size:0.75rem;color:var(--tx);box-shadow:0 8px 24px rgba(0,0,0,0.6);backdrop-filter:blur(6px);z-index:10;max-width:280px;"></div>
+      <div id="graph-stats-overlay" style="position:absolute;bottom:12px;left:14px;background:rgba(10,13,26,0.85);padding:6px 12px;border-radius:8px;border:1px solid var(--bd);font-size:0.7rem;font-family:var(--mono);color:var(--mu);pointer-events:none;">
+        <span id="g-stat-nodes">0 nodos</span> · <span id="g-stat-edges">0 ramas</span> · <span id="g-stat-synapses" style="color:var(--purple)">0 sinapsis</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const k = n => (n/1000).toFixed(1) + "K";
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+let lastStatus = null;
+
+function openModal(id) {
+  const el = $(id);
+  if(el) {
+    el.classList.add('open');
+    if(id === 'modal-tree') loadTree();
+  }
+}
+
+function closeModal(id) {
+  const el = $(id);
+  if(el) el.classList.remove('open');
+}
+
+async function poll() {
+  try {
+    const r = await fetch('/api/status');
+    const s = await r.json();
+    lastStatus = s;
+    const srvOk = !!s.server_ready;
+    $('b-srv').className = 'badge ' + (srvOk ? 'ok' : 'warn');
+    $('b-srv').innerHTML = '<span class="pulse-dot"></span>' + (srvOk ? 'Servidores LLM ✓' : 'Servidores sin verificar');
+    if (s.system_info) $('sub-info').textContent = 'LTM :' + s.system_info.gpu0_port + ' · STM :' + s.system_info.gpu1_port + ' · ' + s.system_info.model;
+    const m = s.stm, l = s.ltm;
+
+    if($('hdr-cartridge-name')) {
+      const pName = (s.cartridge && s.cartridge.name) ? s.cartridge.name : 'Principal';
+      const mounted = s.mounted_cartridges || [];
+      const extra = mounted.length > 1 ? ' (+' + (mounted.length - 1) + ' aux)' : '';
+      $('hdr-cartridge-name').textContent = pName + extra;
+    }
+
+    $('stm-tokens').textContent = k(m.tokens) + " / " + k(m.max_tokens);
+    $('stm-bar').style.width = Math.min(100, m.usage * 100) + "%";
+    $('stm-bar').style.background = m.tokens >= m.trigger ? 'var(--amber)' : 'linear-gradient(90deg,var(--cyan),var(--blue))';
+    $('stm-entries').textContent = m.entries + " entradas vivas";
+    $('stm-sums').textContent = m.summaries + " resúmenes (N1, N2)";
+    $('stm-saves').textContent = k(m.tokens_saved) + " tok ahorrados";
+    $('stm-mode').textContent = "modo " + m.prompt_mode;
+
+    $('ltm-tick').textContent = "Tick #" + String(l.tick).padStart(6, '0') + " (rev " + l.rev + ")";
+    $('ltm-cells').textContent = l.alive + " Células Vivas";
+    $('ltm-nodes').textContent = l.nodes + " Nodos de Ontología";
+    $('ltm-archived').textContent = l.archived + " Archivadas (Dormidas)";
+    $('ltm-dirty').textContent = l.dirty + " Nodos sin describir";
+    if($('ltm-episodes')) $('ltm-episodes').textContent = (l.episodes || 0) + " episodios";
+    if($('ltm-vectors')) $('ltm-vectors').textContent = (l.vectors || 0) + " vectores";
+    if($('ltm-synapses')) $('ltm-synapses').textContent = (l.synapses || 0) + " sinapsis";
+
+    const stOk = l.stats.selftest_ok || 0, stFail = l.stats.selftest_fail || 0, stRec = l.stats.selftest_recovered || 0;
+    const totalSt = stOk + stFail;
+    const pct = totalSt > 0 ? Math.round((stOk / totalSt) * 100) : 100;
+    $('selftest-score').textContent = pct + "% Retención";
+    $('selftest-score').className = 'badge ' + (pct >= 90 ? 'ok' : 'warn');
+    $('selftest-counts').textContent = "Tests OK: " + stOk + " | Fallos: " + stFail + " | Recuperados: " + stRec;
+    $('recall-radar').textContent = "Exact: " + (l.stats.recall_exact||0) + " | BM25: " + (l.stats.recall_lexico||0) + " | Sem: " + (l.stats.recall_semantica||0) + " | Árbol: " + (l.stats.recall_arbol||0) + " | Emb: " + (l.stats.recall_embeddings||0) + " | Híbrido: " + (l.stats.recall_hibrido||0);
+
+    const curTask = l.current_task;
+    $('cur-task-name').textContent = "FASE ACTUAL: " + curTask.toUpperCase();
+    $('cur-task-desc').textContent = l.detail;
+
+    document.querySelectorAll('.t-card').forEach(el => {
+      const id = el.id.replace('tc-','');
+      el.classList.remove('active');
+      if(id === curTask) el.classList.add('active');
+    });
+    $('tc-USER_PRIORITY').style.display = (curTask === 'USER_PRIORITY') ? 'block' : 'none';
+
+    for(const id of ['store','answer','stm_lookup','ltm_query']) {
+      $('s-'+id).className = 'st ' + (s.steps[id] || '');
+    }
+
+    const lg = $('logs');
+    lg.innerHTML = s.logs.map(x=>'<div style="margin-bottom:3px">'+esc(x)+'</div>').join('');
+    lg.scrollTop = lg.scrollHeight;
+  } catch(e) {}
+}
+
+async function polle() {
+  try {
+    const d = await (await fetch('/api/stm')).json();
+    const box = $('ents');
+    box.innerHTML = d.entries.map(e => {
+      let cls = 'e-chip ' + e.role;
+      let tag = e.role.toUpperCase();
+      if(e.level) tag += ' N' + e.level;
+      return '<div class="'+cls+'"><span style="color:var(--mu)">['+tag+' · '+e.tokens+' tok]</span> '+esc(e.text.slice(0,220))+'</div>';
+    }).join('');
+    box.scrollTop = box.scrollHeight;
+  } catch(e) {}
+}
+
+function addMsg(cls, text, meta) {
+  const d = document.createElement('div');
+  d.className = 'm ' + cls;
+  d.textContent = text;
+  if(meta) {
+    const mt = document.createElement('div');
+    mt.className = 'meta';
+    mt.innerHTML = meta;
+    d.appendChild(mt);
+  }
+  $('msgs').appendChild(d);
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+}
+
+async function readSSE(resp, onEvent) {
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  for(;;) {
+    const {value, done} = await reader.read();
+    if(done) break;
+    buf += dec.decode(value, {stream:true});
+    let i;
+    while((i = buf.indexOf('\n\n')) >= 0) {
+      const chunk = buf.slice(0, i);
+      buf = buf.slice(i + 2);
+      if(!chunk.startsWith('data: ')) continue;
+      let ev;
+      try { ev = JSON.parse(chunk.slice(6)); } catch(_) { continue; }
+      onEvent(ev);
+    }
+  }
+}
+
+function metaHtml(stm, ltm, llmMs) {
+  let meta = '⏱️ Corto: ' + stm.hits + ' aciertos (' + stm.ms + ' ms) | Largo: ' + (ltm.found ? 'SÍ' : 'NO') + ' (' + ltm.ms + ' ms)';
+  if(llmMs != null) meta += ' | LLM: ' + llmMs + ' ms';
+  if(ltm.sources && ltm.sources.length) {
+    meta += '<br>📚 ' + ltm.sources.map(s => '<span class="source-pill">'+esc(s)+'</span>').join(' ');
+  }
+  return meta;
+}
+
+function setMeta(div, html) {
+  let mt = div.querySelector('.meta');
+  if(!mt) { mt = document.createElement('div'); mt.className = 'meta'; div.appendChild(mt); }
+  mt.innerHTML = html;
+}
+
+async function sendMsg() {
+  const t = $('inp').value.trim();
+  if(!t) return;
+  $('inp').value = '';
+  addMsg('u', t);
+  $('send').disabled = true;
+  $('hint').textContent = 'Consultando memorias en paralelo...';
+  const bubble = document.createElement('div');
+  bubble.className = 'm a';
+  const body = document.createElement('span');
+  body.textContent = '…';
+  bubble.appendChild(body);
+  $('msgs').appendChild(bubble);
+  let acc = '', got = false;
+  try {
+    const resp = await fetch('/api/chat/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:t})});
+    if(!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+    await readSSE(resp, ev => {
+      if(ev.event === 'context') {
+        setMeta(bubble, metaHtml(ev.stm, ev.ltm, null));
+        $('hint').textContent = 'Generando respuesta...';
+      } else if(ev.event === 'token') {
+        acc += ev.text; got = true;
+        body.textContent = acc;
+        $('msgs').scrollTop = $('msgs').scrollHeight;
+      } else if(ev.event === 'done') {
+        got = true;
+        body.textContent = ev.result.answer;
+        setMeta(bubble, metaHtml(ev.result.stm, ev.result.ltm, ev.result.llm_ms));
+      } else if(ev.event === 'error') {
+        got = true;
+        body.textContent = (acc ? acc + '\n\n' : '') + '⚠️ ' + ev.error;
+      }
+    });
+    if(!got) body.textContent = '⚠️ Sin respuesta';
+  } catch(e) {
+    body.textContent = (acc ? acc + '\n\n' : '') + '⚠️ Error de comunicación';
+  }
+  $('msgs').scrollTop = $('msgs').scrollHeight;
+  $('send').disabled = false;
+  $('hint').textContent = '';
+  polle(); poll();
+}
+
+async function loadTree() {
+  $('tree-content').textContent = 'Generando render del árbol neocortical...';
+  const r = await (await fetch('/api/tree')).json();
+  $('tree-content').textContent = r.tree || '(Memoria a largo plazo vacía)';
+}
+
+async function submitIngest() {
+  const txt = $('ingest-txt').value.trim();
+  const src = $('ingest-src').value.trim();
+  if(!txt) { alert('Pega texto para ingestar'); return; }
+  const prog = $('ingest-progress'), btn = $('ingest-btn');
+  btn.disabled = true;
+  prog.textContent = 'Iniciando ingesta...';
+  let result = null, err = null;
+  try {
+    const resp = await fetch('/api/ingest_ltm/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:txt, source:src})});
+    if(!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+    await readSSE(resp, ev => {
+      if(ev.event === 'progress') prog.textContent = 'Bloque ' + ev.block + '/' + ev.total + ' · ' + ev.facts + ' hechos';
+      else if(ev.event === 'done') result = ev.result;
+      else if(ev.event === 'error') err = ev.error;
+    });
+  } catch(e) { err = String(e); }
+  btn.disabled = false;
+  prog.textContent = '';
+  if(err) { alert('⚠️ ' + err); return; }
+  if(result) {
+    alert('✓ Ingesta completada: ' + result.facts + ' hechos registrados en el árbol.\n📌 Fuente: ' + result.source);
+    closeModal('modal-ingest');
+    $('ingest-txt').value = '';
+  }
+  poll();
+}
+
+async function openDebug() {
+  openModal('modal-debug');
+  $('debug-json').textContent = JSON.stringify(lastStatus, null, 2);
+}
+
+function copyBugReport() {
+  if(!lastStatus) { alert('No hay telemetría aún'); return; }
+  const md = [
+    '# REPORTE DE TELEMETRÍA Y ESTADO DE MEMORIA',
+    'Fecha: ' + new Date().toISOString(),
+    'Python: ' + lastStatus.system_info.python,
+    '',
+    '## Estado LTM (Largo Plazo)',
+    '- Tick: ' + lastStatus.ltm.tick,
+    '- Células Vivas: ' + lastStatus.ltm.alive,
+    '- Tarea Actual: ' + lastStatus.ltm.current_task,
+    '## Últimos Logs',
+    '```',
+    lastStatus.logs.slice(-20).join('\n'),
+    '```'
+  ].join('\n');
+  navigator.clipboard.writeText(md).then(() => alert('✓ Reporte copiado al portapapeles.'));
+}
+
+function copyElement(id) {
+  navigator.clipboard.writeText($(id).textContent).then(() => alert('✓ Copiado al portapapeles'));
+}
+
+async function act(a) {
+  if(a === 'reset_stm' && !confirm('¿Vaciar la memoria a corto plazo? (La memoria larga no se toca)')) return;
+  await fetch('/api/' + a, {method:'POST'});
+  polle(); poll();
+}
+
+// ==================== GESTOR MULTI-CARTUCHO ====================
+async function openCartridgesModal() {
+  openModal('modal-cartridges');
+  await loadCartridges();
+}
+
+async function loadCartridges() {
+  try {
+    const r = await (await fetch('/api/cartridges')).json();
+    const grid = $('cartridges-grid');
+    if(!grid) return;
+    grid.innerHTML = '';
+
+    const cartridges = r.cartridges || [];
+    const mountedList = cartridges.filter(c => c.is_mounted);
+    const primaryObj = cartridges.find(c => c.is_primary);
+
+    if($('hdr-cartridge-name')) {
+      const extra = mountedList.length > 1 ? ' (+' + (mountedList.length - 1) + ' aux)' : '';
+      $('hdr-cartridge-name').textContent = (primaryObj ? primaryObj.name : 'Principal') + extra;
+    }
+
+    if($('cartridges-summary')) {
+      $('cartridges-summary').innerHTML = 'Total: <b>' + cartridges.length + ' cartuchos</b> | <b>' + mountedList.length + ' conectados</b> (' + (primaryObj ? 'Primario: <span style="color:var(--green)">' + esc(primaryObj.name) + '</span>' : '') + ')';
+    }
+
+    cartridges.forEach(c => {
+      const card = document.createElement('div');
+      const isPrimary = c.is_primary;
+      const isMounted = c.is_mounted;
+
+      let borderColor = 'var(--bd)';
+      let glow = '';
+      if(isPrimary) {
+        borderColor = 'var(--green)';
+        glow = 'box-shadow:0 0 16px rgba(16,185,129,.25);';
+      } else if(isMounted) {
+        borderColor = 'var(--cyan)';
+        glow = 'box-shadow:0 0 14px rgba(6,182,212,.2);';
+      }
+
+      card.style.cssText = 'background:var(--inp);border:1px solid ' + borderColor + ';border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;' + glow;
+
+      let statusBadge = '<span class="badge" style="color:var(--mu)">DESCONECTADO</span>';
+      if(isPrimary) {
+        statusBadge = '<span class="badge ok"><span class="pulse-dot"></span>PRIMARIO (R/W)</span>';
+      } else if(isMounted) {
+        statusBadge = '<span class="badge cyan"><span class="pulse-dot"></span>CONECTADO (Lectura)</span>';
+      }
+
+      card.innerHTML = 
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;">' +
+          '<div>' +
+            '<div style="font-weight:800;font-size:0.98rem;color:var(--tx);">' + esc(c.name) + '</div>' +
+            '<div style="font-size:0.68rem;color:var(--mu);font-family:var(--mono);">ID: ' + esc(c.id) + '</div>' +
+          '</div>' +
+          statusBadge +
+        '</div>' +
+        '<p style="font-size:0.75rem;color:var(--tx);opacity:.85;line-height:1.4;min-height:32px;">' + esc(c.description || 'Sin descripción.') + '</p>' +
+        '<div class="row" style="gap:6px;flex-wrap:wrap;font-size:0.68rem;">' +
+          '<span class="badge" style="border-color:var(--cyan);color:var(--cyan);">' + c.cells + ' células</span>' +
+          '<span class="badge">' + c.nodes + ' ramas</span>' +
+          '<span class="badge" style="color:var(--mu);">' + c.size_kb + ' KB</span>' +
+        '</div>' +
+        '<div class="row card-actions" style="margin-top:auto;justify-content:space-between;border-top:1px solid var(--bd);padding-top:10px;gap:6px;">' +
+          '<div class="row act-left" style="gap:6px;"></div>' +
+          '<div class="row act-right" style="gap:4px;"></div>' +
+        '</div>';
+
+      const actLeft = card.querySelector('.act-left');
+      const actRight = card.querySelector('.act-right');
+
+      if(!isMounted) {
+        const bMount = document.createElement('button');
+        bMount.style.cssText = 'background:var(--blue);color:#fff;border:none;font-weight:700;font-size:0.72rem;';
+        bMount.textContent = '🔌 Conectar';
+        bMount.onclick = () => mountCartridge(c.id);
+        actLeft.appendChild(bMount);
+
+        const bPrim = document.createElement('button');
+        bPrim.style.cssText = 'border-color:var(--green);color:var(--green);font-size:0.7rem;';
+        bPrim.textContent = '✍️ Hacer Primario';
+        bPrim.onclick = () => setPrimaryCartridge(c.id);
+        actLeft.appendChild(bPrim);
+      } else {
+        if(!isPrimary) {
+          const bPrim = document.createElement('button');
+          bPrim.style.cssText = 'background:rgba(16,185,129,.2);border-color:var(--green);color:var(--green);font-weight:700;font-size:0.7rem;';
+          bPrim.textContent = '✍️ Hacer Primario';
+          bPrim.onclick = () => setPrimaryCartridge(c.id);
+          actLeft.appendChild(bPrim);
+
+          const bUnm = document.createElement('button');
+          bUnm.style.cssText = 'border-color:var(--amber);color:var(--amber);font-size:0.7rem;';
+          bUnm.textContent = '🔌 Desconectar';
+          bUnm.onclick = () => unmountCartridge(c.id);
+          actLeft.appendChild(bUnm);
+        } else {
+          const sPrim = document.createElement('span');
+          sPrim.style.cssText = 'font-size:0.7rem;color:var(--green);font-weight:700;';
+          sPrim.textContent = '✍️ Destino de aprendizaje activo';
+          actLeft.appendChild(sPrim);
+        }
+      }
+
+      const bClone = document.createElement('button');
+      bClone.title = 'Clonar cartucho';
+      bClone.style.fontSize = '0.68rem';
+      bClone.textContent = '📋';
+      bClone.onclick = () => cloneCartridge(c.id, c.name);
+      actRight.appendChild(bClone);
+
+      const bExport = document.createElement('button');
+      bExport.title = 'Exportar (.cartridge)';
+      bExport.style.cssText = 'border-color:var(--green);color:var(--green);font-size:0.68rem;';
+      bExport.textContent = '💾';
+      bExport.onclick = () => exportCartridge(c.id);
+      actRight.appendChild(bExport);
+
+      const bReset = document.createElement('button');
+      bReset.title = 'Vaciar contenido (borrar células)';
+      bReset.style.cssText = 'border-color:var(--amber);color:var(--amber);font-size:0.68rem;';
+      bReset.textContent = '⚠️';
+      bReset.onclick = () => resetCartridge(c.id, c.name);
+      actRight.appendChild(bReset);
+
+      if(!isMounted && !isPrimary) {
+        const bDel = document.createElement('button');
+        bDel.title = 'Eliminar permanentemente';
+        bDel.style.cssText = 'border-color:var(--red);color:var(--red);font-size:0.68rem;';
+        bDel.textContent = '🗑️';
+        bDel.onclick = () => deleteCartridge(c.id, c.name);
+        actRight.appendChild(bDel);
+      }
+
+      grid.appendChild(card);
+    });
+  } catch(e) {
+    console.error("Error cargando cartuchos:", e);
+    const grid = $('cartridges-grid');
+    if(grid) grid.innerHTML = '<div style="color:var(--red);font-size:0.8rem;">Error cargando cartuchos: ' + esc(e.message) + '</div>';
+  }
+}
+
+async function mountCartridge(cid) {
+  const r = await (await fetch('/api/cartridges/mount', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid})
+  })).json();
+  if(r.ok) {
+    await loadCartridges();
+    poll(); polle();
+  } else {
+    alert(r.error || 'No se pudo conectar el cartucho');
+  }
+}
+
+async function unmountCartridge(cid) {
+  const r = await (await fetch('/api/cartridges/unmount', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid})
+  })).json();
+  if(r.ok) {
+    await loadCartridges();
+    poll(); polle();
+  } else {
+    alert(r.error || 'No se pudo desconectar el cartucho');
+  }
+}
+
+async function setPrimaryCartridge(cid) {
+  const r = await (await fetch('/api/cartridges/set_primary', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid})
+  })).json();
+  if(r.ok) {
+    await loadCartridges();
+    poll(); polle();
+  } else {
+    alert(r.error || 'No se pudo asignar como primario');
+  }
+}
+
+async function promptCreateCartridge() {
+  const name = prompt('Nombre del nuevo cartucho (ej: Medicina, Finanzas, Proyecto X):');
+  if(!name || !name.trim()) return;
+  const desc = prompt('Descripción del ámbito de conocimiento:') || '';
+  const r = await (await fetch('/api/cartridges/create', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: name.trim(), description: desc.trim(), mount: true})
+  })).json();
+  if(r && r.id) {
+    await loadCartridges();
+    poll(); polle();
+  } else {
+    alert(r.error || 'No se pudo crear el cartucho');
+  }
+}
+
+async function cloneCartridge(sourceId, sourceName) {
+  const name = prompt('Nombre para el cartucho clonado:', sourceName + ' (Copia)');
+  if(!name || !name.trim()) return;
+  const desc = prompt('Descripción del ámbito:', 'Copia de ' + sourceName) || '';
+  const r = await (await fetch('/api/cartridges/clone', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({source_id: sourceId, name: name.trim(), description: desc.trim()})
+  })).json();
+  if(r && r.id) {
+    await loadCartridges();
+    poll(); polle();
+  } else {
+    alert(r.error || 'No se pudo clonar el cartucho');
+  }
+}
+
+function exportCartridge(cid) {
+  window.location.href = '/api/cartridges/export?id=' + encodeURIComponent(cid);
+}
+
+async function resetCartridge(cid, name) {
+  if(!confirm('⚠️ ¿VACIAR el cartucho "' + name + '"?\nSe borrarán todas sus células y estructura de memoria, pero el cartucho se conservará.')) return;
+  const r = await (await fetch('/api/cartridges/reset', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid})
+  })).json();
+  if(r.ok) {
+    await loadCartridges();
+    poll(); polle();
+  } else {
+    alert(r.error || 'Error al vaciar el cartucho');
+  }
+}
+
+async function deleteCartridge(cid, name) {
+  if(!confirm('¿Eliminar permanentemente el cartucho "' + name + '" (' + cid + ')?\nEsta acción NO se puede deshacer.')) return;
+  const r = await (await fetch('/api/cartridges/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid})
+  })).json();
+  if(r.ok) {
+    await loadCartridges();
+  } else {
+    alert(r.error || 'No se pudo eliminar el cartucho');
+  }
+}
+
+function handleImportFile(event) {
+  const file = event.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const b64 = e.target.result.split(',')[1] || e.target.result;
+    try {
+      const resp = await fetch('/api/cartridges/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({filename: file.name, content_b64: b64})
+      });
+      const r = await resp.json();
+      if(r.ok) {
+        alert('✓ Cartucho importado con éxito: ' + (r.cartridge ? r.cartridge.name : file.name) + '\nHa sido conectado automáticamente.');
+        await loadCartridges();
+        poll(); polle();
+      } else {
+        alert('Error importando: ' + (r.error || 'Archivo inválido'));
+      }
+    } catch(err) {
+      alert('Error de red al importar: ' + err.message);
+    }
+    event.target.value = '';
+  };
+  reader.readAsDataURL(file);
+}
+
+$('inp').addEventListener('keydown', e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } });
+setInterval(poll, 700);
+setInterval(polle, 2500);
+poll(); polle();
+</script>
+
+<!-- Scripts del Explorador Visual -->
+<script>
+let explorerNodes = [];
+let selectedNodeId = null;
+let currentCells = [];
+const LEVEL_ICONS = ['🪐','🌐','🏙️','🏭','👤','🫀','🧬'];
+
+async function openExplorer() {
+  openModal('modal-explorer');
+  await loadExplorerTree();
+}
+
+async function loadExplorerTree() {
+  $('explorer-tree').innerHTML = '<div style="padding:10px;color:var(--mu)">Cargando ontología...</div>';
+  try {
+    const r = await fetch('/api/explorer/tree');
+    explorerNodes = await r.json();
+    renderTree();
+    if(explorerNodes.length > 0 && selectedNodeId === null) {
+      selectNode(explorerNodes[0].id);
+    }
+  } catch(e) {
+    $('explorer-tree').innerHTML = '<div style="padding:10px;color:var(--red)">Error cargando árbol</div>';
+  }
+}
+
+function renderTree() {
+  const container = $('explorer-tree');
+  container.innerHTML = '';
+  const byParent = {};
+  explorerNodes.forEach(n => {
+    const pid = n.parent_id === null ? 'root' : n.parent_id;
+    byParent[pid] = byParent[pid] || [];
+    byParent[pid].push(n);
+  });
+
+  function buildBranch(pid, depth) {
+    const children = byParent[pid] || [];
+    const div = document.createElement('div');
+    children.forEach(c => {
+      const row = document.createElement('div');
+      const isSelected = c.id === selectedNodeId;
+      row.style.cssText = 'padding:4px 8px;margin:2px 0;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:.74rem;' + 
+                         (isSelected ? 'background:rgba(6,182,212,.18);color:var(--cyan);font-weight:700;' : 'color:var(--tx);');
+      row.style.paddingLeft = (depth * 14 + 8) + 'px';
+      const icon = LEVEL_ICONS[c.level] || '📁';
+      row.innerHTML = '<span>' + icon + ' ' + esc(c.name) + '</span><span class="badge" style="font-size:.62rem;padding:1px 5px">' + c.celulas + ' cél</span>';
+      row.onclick = (e) => { e.stopPropagation(); selectNode(c.id); };
+      div.appendChild(row);
+      div.appendChild(buildBranch(c.id, depth + 1));
+    });
+    return div;
+  }
+  container.appendChild(buildBranch('root', 0));
+}
+
+async function selectNode(nodeId) {
+  selectedNodeId = nodeId;
+  renderTree();
+  const node = explorerNodes.find(n => n.id === nodeId);
+  if(!node) return;
+
+  $('node-detail-banner').style.display = 'block';
+  $('node-level-tag').textContent = 'PROFUNDIDAD ' + (node.level + 1);
+  $('node-title').textContent = node.name;
+  $('node-desc-input').value = node.description || '';
+
+  const r = await fetch('/api/explorer/cells?node_id=' + nodeId);
+  const cells = await r.json();
+  $('cells-sec-title').textContent = 'CÉLULAS EN ESTE NODO (' + cells.length + ')';
+
+  const cList = $('explorer-cells-list');
+  cList.innerHTML = '';
+  if(cells.length === 0) {
+    cList.innerHTML = '<div style="padding:20px;text-align:center;color:var(--mu);font-size:.78rem;background:var(--inp);border-radius:8px">No hay células registradas en este nivel.</div>';
+    return;
+  }
+
+  currentCells = cells;
+  cells.forEach((c, ci) => {
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:10px 12px;display:flex;flex-direction:column;gap:6px;';
+    card.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <div class="row" style="gap:6px;">
+          <span class="badge" style="border-color:var(--cyan);color:var(--cyan);font-size:.68rem;">imp ${c.importance}</span>
+          <span class="badge" style="font-size:.68rem;">${esc(c.kind)}</span>
+        </div>
+        <div class="row" style="gap:4px;">
+          <button onclick="editCell(currentCells[${ci}])" style="padding:2px 8px;font-size:.66rem">✏️</button>
+          <button onclick="deleteCell(currentCells[${ci}].id)" style="padding:2px 8px;font-size:.66rem;border-color:var(--red);color:var(--red)">🗑️</button>
+        </div>
+      </div>
+      <div style="font-size:.84rem;line-height:1.4;color:var(--tx);">${esc(c.text)}</div>
+      ${c.fuente ? '<div style="font-size:.68rem;color:var(--cyan);">📚 ' + esc(c.fuente) + '</div>' : ''}
+    `;
+    cList.appendChild(card);
+  });
+}
+
+async function saveNodeDescription() {
+  if(!selectedNodeId) return;
+  const desc = $('node-desc-input').value.trim();
+  const node = explorerNodes.find(n => n.id === selectedNodeId);
+  await fetch('/api/explorer/node/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: selectedNodeId, name: node.name, description: desc, parent_id: node.parent_id})
+  });
+  await loadExplorerTree();
+}
+
+async function promptCreateNode(parentId) {
+  const name = prompt('Nombre de la nueva carpeta:');
+  if(!name || !name.trim()) return;
+  await fetch('/api/explorer/node/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: null, parent_id: parentId, name: name.trim(), description: ''})
+  });
+  await loadExplorerTree();
+}
+
+async function deleteCurrentNode() {
+  if(!selectedNodeId || !confirm('¿Eliminar esta carpeta y todo su contenido?')) return;
+  await fetch('/api/explorer/node/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: selectedNodeId})
+  });
+  selectedNodeId = null;
+  await loadExplorerTree();
+}
+
+function promptCreateCell() {
+  if(!selectedNodeId) return;
+  $('cell-modal-title').textContent = 'Nueva Célula de Memoria';
+  $('edit-cell-id').value = '';
+  $('edit-cell-text').value = '';
+  $('edit-cell-imp').value = '7';
+  $('edit-cell-kind').value = 'dato';
+  $('edit-cell-src').value = '';
+  openModal('modal-cell-edit');
+}
+
+function editCell(c) {
+  $('cell-modal-title').textContent = 'Editar Célula';
+  $('edit-cell-id').value = c.id;
+  $('edit-cell-text').value = c.text;
+  $('edit-cell-imp').value = c.importance;
+  $('edit-cell-kind').value = c.kind;
+  $('edit-cell-src').value = c.fuente || '';
+  openModal('modal-cell-edit');
+}
+
+async function saveCellFromModal() {
+  const cid = $('edit-cell-id').value.trim() || null;
+  const txt = $('edit-cell-text').value.trim();
+  const imp = parseFloat($('edit-cell-imp').value) || 5;
+  const kind = $('edit-cell-kind').value;
+  const src = $('edit-cell-src').value.trim();
+  if(!txt) { alert('El texto no puede estar vacío'); return; }
+
+  await fetch('/api/explorer/cell/save', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid, node_id: selectedNodeId, text: txt, importance: imp, kind: kind, fuente: src})
+  });
+  closeModal('modal-cell-edit');
+  await selectNode(selectedNodeId);
+  await loadExplorerTree();
+  poll();
+}
+
+async function deleteCell(cid) {
+  if(!confirm('¿Eliminar esta célula?')) return;
+  await fetch('/api/explorer/cell/delete', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({id: cid})
+  });
+  await selectNode(selectedNodeId);
+  await loadExplorerTree();
+  poll();
+}
+
+async function exportToDisk() {
+  const r = await (await fetch('/api/explorer/export_disk', {method: 'POST'})).json();
+  alert('✓ Volcado completado: ' + r.count + ' células exportadas en:\n' + r.path);
+}
+</script>
+
+<!-- Scripts del Grafo Sináptico (Motor de Fuerzas y Sinapsis Hebbianas) -->
+<script>
+let gCanvas = null, gCtx = null;
+let gNodes = [], gLinks = [], gSynapses = [];
+let gNodeMap = new Map();
+let gPhysicsRunning = true;
+let gAnimId = null;
+let gTransform = { x: 0, y: 0, k: 1 };
+let gDragNode = null;
+let gHoverNode = null;
+let gParticles = [];
+let gIsDraggingBg = false;
+let gDragStart = { x: 0, y: 0 };
+
+const LEVEL_COLORS = [
+  '#06b6d4', // cyan (macro)
+  '#3b82f6', // blue
+  '#6366f1', // indigo
+  '#a855f7', // purple
+  '#ec4899', // pink
+  '#f59e0b', // amber
+  '#10b981'  // emerald (específico)
+];
+
+async function openGraphModal() {
+  openModal('modal-graph');
+  gCanvas = $('graph-canvas');
+  if(!gCanvas) return;
+  gCtx = gCanvas.getContext('2d');
+
+  // Ajustar tamaño del canvas a su contenedor
+  resizeGraphCanvas();
+  window.addEventListener('resize', resizeGraphCanvas);
+
+  // Cargar lista de cartuchos en el selector
+  try {
+    const r = await (await fetch('/api/cartridges')).json();
+    const sel = $('graph-cartridge-select');
+    if(sel) {
+      sel.innerHTML = '<option value="all">🌐 Todos los conectados</option>';
+      (r.cartridges || []).filter(c => c.is_mounted).forEach(c => {
+        sel.innerHTML += '<option value="' + esc(c.id) + '">' + esc(c.name) + (c.is_primary ? ' (Primario)' : '') + '</option>';
+      });
+      sel.value = 'all';
+    }
+  } catch(e) {}
+
+  setupGraphEvents();
+  await loadGraphData('all');
+
+  if(!gAnimId) {
+    gPhysicsRunning = true;
+    $('btn-graph-physics').textContent = "⏸️ Pausar Física";
+    gAnimId = requestAnimationFrame(graphLoop);
+  }
+}
+
+function closeGraphModal() {
+  closeModal('modal-graph');
+  if(gAnimId) {
+    cancelAnimationFrame(gAnimId);
+    gAnimId = null;
+  }
+}
+
+function resizeGraphCanvas() {
+  if(!gCanvas) return;
+  const rect = gCanvas.parentElement.getBoundingClientRect();
+  gCanvas.width = rect.width;
+  gCanvas.height = rect.height;
+}
+
+async function loadGraphData(cartridgeId) {
+  try {
+    const url = '/api/graph' + (cartridgeId ? '?cartridge=' + encodeURIComponent(cartridgeId) : '');
+    const data = await (await fetch(url)).json();
+    initGraphData(data.nodes || [], data.synapses || []);
+  } catch(e) {
+    console.error("Error cargando grafo:", e);
+  }
+}
+
+function initGraphData(nodes, synapses) {
+  gNodeMap.clear();
+  gNodes = [];
+  gLinks = [];
+  gSynapses = [];
+  gParticles = [];
+
+  const w = gCanvas.width || 1200;
+  const h = gCanvas.height || 700;
+  const cx = w / 2;
+  const cy = h / 2;
+
+  // Inicializar nodos con posiciones en anillo según nivel
+  nodes.forEach((n, idx) => {
+    const angle = (idx / Math.max(1, nodes.length)) * Math.PI * 2;
+    const dist = 60 + (n.level || 0) * 65 + Math.random() * 40;
+    const nodeObj = {
+      ...n,
+      x: cx + Math.cos(angle) * dist,
+      y: cy + Math.sin(angle) * dist,
+      vx: 0,
+      vy: 0,
+      radius: Math.max(9, Math.min(26, 8 + Math.sqrt((n.celulas || 1) * 3) + (n.importance || 5) * 0.8)),
+      color: LEVEL_COLORS[n.level % LEVEL_COLORS.length] || '#06b6d4'
+    };
+    gNodeMap.set(String(n.id), nodeObj);
+    gNodes.push(nodeObj);
+  });
+
+  // Enlaces de árbol jerárquico (parent_id)
+  nodes.forEach(n => {
+    if(n.parent_id !== null && n.parent_id !== undefined) {
+      const parent = gNodeMap.get(String(n.parent_id));
+      const child = gNodeMap.get(String(n.id));
+      if(parent && child) {
+        gLinks.push({ source: parent, target: child });
+      }
+    }
+  });
+
+  // Sinapsis Hebbianas horizontales
+  synapses.forEach(s => {
+    const src = gNodeMap.get(String(s.source_id));
+    const dst = gNodeMap.get(String(s.target_id));
+    if(src && dst) {
+      const synObj = {
+        source: src,
+        target: dst,
+        weight: s.weight || 1.0,
+        coactivations: s.coactivations || 1
+      };
+      gSynapses.push(synObj);
+
+      // Partículas de impulsos sinápticos
+      for(let p = 0; p < Math.min(3, Math.ceil(synObj.weight / 2)); p++) {
+        gParticles.push({
+          synapse: synObj,
+          progress: Math.random(),
+          speed: 0.006 + Math.random() * 0.008
+        });
+      }
+    }
+  });
+
+  // Actualizar estadísticas en pantalla
+  if($('g-stat-nodes')) $('g-stat-nodes').textContent = gNodes.length + " nodos";
+  if($('g-stat-edges')) $('g-stat-edges').textContent = gLinks.length + " ramas";
+  if($('g-stat-synapses')) $('g-stat-synapses').textContent = gSynapses.length + " sinapsis";
+
+  graphResetView();
+}
+
+function updatePhysics() {
+  if(!gPhysicsRunning) return;
+
+  const kRepulsion = 1600;
+  const kCenter = 0.012;
+  const cx = (gCanvas.width / 2 - gTransform.x) / gTransform.k;
+  const cy = (gCanvas.height / 2 - gTransform.y) / gTransform.k;
+
+  // 1. Repulsión entre todos los pares de nodos (Coulomb)
+  for(let i = 0; i < gNodes.length; i++) {
+    const a = gNodes[i];
+    for(let j = i + 1; j < gNodes.length; j++) {
+      const b = gNodes[j];
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const distSq = dx * dx + dy * dy + 100;
+      const dist = Math.sqrt(distSq);
+      const force = (kRepulsion / distSq);
+      const fx = (dx / dist) * force;
+      const fy = (dy / dist) * force;
+      a.vx -= fx;
+      a.vy -= fy;
+      b.vx += fx;
+      b.vy += fy;
+    }
+
+    // Gravedad hacia el centro
+    a.vx += (cx - a.x) * kCenter;
+    a.vy += (cy - a.y) * kCenter;
+  }
+
+  // 2. Atracción de ramas jerárquicas (muelle corto)
+  const lBranch = 75;
+  gLinks.forEach(l => {
+    const dx = l.target.x - l.source.x;
+    const dy = l.target.y - l.source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const force = (dist - lBranch) * 0.04;
+    const fx = (dx / dist) * force;
+    const fy = (dy / dist) * force;
+    l.source.vx += fx;
+    l.source.vy += fy;
+    l.target.vx -= fx;
+    l.target.vy -= fy;
+  });
+
+  // 3. Atracción de sinapsis Hebbianas (muelle asociativo elástico)
+  const lSyn = 110;
+  gSynapses.forEach(s => {
+    const dx = s.target.x - s.source.x;
+    const dy = s.target.y - s.source.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    const force = (dist - lSyn) * (0.015 * Math.min(3, s.weight));
+    const fx = (dx / dist) * force;
+    const fy = (dy / dist) * force;
+    s.source.vx += fx;
+    s.source.vy += fy;
+    s.target.vx -= fx;
+    s.target.vy -= fy;
+  });
+
+  // 4. Integración y fricción
+  gNodes.forEach(n => {
+    if(n === gDragNode) return;
+    n.vx *= 0.86;
+    n.vy *= 0.86;
+    n.x += n.vx;
+    n.y += n.vy;
+  });
+
+  // 5. Impulsos a lo largo de las sinapsis
+  gParticles.forEach(p => {
+    p.progress += p.speed;
+    if(p.progress > 1) p.progress = 0;
+  });
+}
+
+function graphLoop() {
+  updatePhysics();
+  renderGraph();
+  if(gAnimId) {
+    gAnimId = requestAnimationFrame(graphLoop);
+  }
+}
+
+function renderGraph() {
+  if(!gCtx || !gCanvas) return;
+  const ctx = gCtx;
+  const w = gCanvas.width;
+  const h = gCanvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Fondo estrellado sutil
+  ctx.save();
+  ctx.translate(gTransform.x, gTransform.y);
+  ctx.scale(gTransform.k, gTransform.k);
+
+  // Si no hay nodos, mensaje amigable
+  if(gNodes.length === 0) {
+    ctx.restore();
+    ctx.fillStyle = "rgba(139,148,158,0.7)";
+    ctx.font = "14px -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("No hay nodos ni memorias consolidadas en este cartucho todavía.", w / 2, h / 2);
+    ctx.fillText("Ingesta un libro o conversa con el agente para generar ontología y sinapsis.", w / 2, h / 2 + 25);
+    return;
+  }
+
+  // 1. Dibujar ramas jerárquicas (cian translúcido)
+  ctx.strokeStyle = "rgba(6,182,212,0.22)";
+  ctx.lineWidth = 1.4;
+  gLinks.forEach(l => {
+    ctx.beginPath();
+    ctx.moveTo(l.source.x, l.source.y);
+    ctx.lineTo(l.target.x, l.target.y);
+    ctx.stroke();
+  });
+
+  // 2. Dibujar sinapsis Hebbianas (púrpura / oro con brillo)
+  gSynapses.forEach(s => {
+    const alpha = Math.min(0.85, 0.25 + s.weight * 0.12);
+    ctx.strokeStyle = "rgba(168,85,247," + alpha + ")";
+    ctx.lineWidth = Math.min(4.5, 1.0 + s.weight * 0.7);
+    ctx.beginPath();
+    ctx.moveTo(s.source.x, s.source.y);
+    ctx.lineTo(s.target.x, s.target.y);
+    ctx.stroke();
+  });
+
+  // 3. Dibujar partículas de impulsos sinápticos
+  gParticles.forEach(p => {
+    const s = p.synapse;
+    const px = s.source.x + (s.target.x - s.source.x) * p.progress;
+    const py = s.source.y + (s.target.y - s.source.y) * p.progress;
+    ctx.fillStyle = "#f59e0b";
+    ctx.shadowColor = "#f59e0b";
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(px, py, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  });
+
+  // 4. Dibujar nodos
+  gNodes.forEach(n => {
+    const isHover = (n === gHoverNode);
+    const isDrag = (n === gDragNode);
+
+    // Halo exterior
+    ctx.shadowColor = n.color;
+    ctx.shadowBlur = isHover || isDrag ? 24 : 12;
+
+    ctx.fillStyle = n.color;
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, n.radius, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Borde blanco de contraste
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = isHover ? "#ffffff" : "rgba(255,255,255,0.4)";
+    ctx.lineWidth = isHover ? 2.5 : 1.2;
+    ctx.stroke();
+
+    // Etiqueta del nodo
+    ctx.fillStyle = isHover ? "#ffffff" : "rgba(249,250,251,0.85)";
+    ctx.font = (isHover ? "bold 11px" : "10px") + " -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(n.name, n.x, n.y + n.radius + 13);
+  });
+
+  ctx.restore();
+}
+
+function setupGraphEvents() {
+  if(!gCanvas) return;
+
+  gCanvas.onmousedown = (e) => {
+    const rect = gCanvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - gTransform.x) / gTransform.k;
+    const my = (e.clientY - rect.top - gTransform.y) / gTransform.k;
+
+    // Detectar si se hizo clic en un nodo
+    for(let i = gNodes.length - 1; i >= 0; i--) {
+      const n = gNodes[i];
+      const dx = n.x - mx;
+      const dy = n.y - my;
+      if(dx * dx + dy * dy <= (n.radius + 4) * (n.radius + 4)) {
+        gDragNode = n;
+        gCanvas.style.cursor = 'grabbing';
+        return;
+      }
+    }
+
+    // Si no, iniciar arrastre del lienzo (pan)
+    gIsDraggingBg = true;
+    gDragStart = { x: e.clientX - gTransform.x, y: e.clientY - gTransform.y };
+  };
+
+  window.addEventListener('mousemove', (e) => {
+    if(!gCanvas) return;
+    const rect = gCanvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left - gTransform.x) / gTransform.k;
+    const my = (e.clientY - rect.top - gTransform.y) / gTransform.k;
+
+    if(gDragNode) {
+      gDragNode.x = mx;
+      gDragNode.y = my;
+      gDragNode.vx = 0;
+      gDragNode.vy = 0;
+      return;
+    }
+
+    if(gIsDraggingBg) {
+      gTransform.x = e.clientX - gDragStart.x;
+      gTransform.y = e.clientY - gDragStart.y;
+      return;
+    }
+
+    // Hover y Tooltip
+    let hovered = null;
+    for(let i = gNodes.length - 1; i >= 0; i--) {
+      const n = gNodes[i];
+      const dx = n.x - mx;
+      const dy = n.y - my;
+      if(dx * dx + dy * dy <= (n.radius + 4) * (n.radius + 4)) {
+        hovered = n;
+        break;
+      }
+    }
+
+    gHoverNode = hovered;
+    const tt = $('graph-tooltip');
+    if(hovered && tt) {
+      gCanvas.style.cursor = 'pointer';
+      tt.style.display = 'block';
+      tt.style.left = (e.clientX - rect.left + 15) + 'px';
+      tt.style.top = (e.clientY - rect.top + 10) + 'px';
+      
+      const cartTag = hovered.cartridge_name ? '<div style="font-size:0.65rem;color:var(--cyan);font-family:var(--mono);">Cartucho: ' + esc(hovered.cartridge_name) + '</div>' : '';
+      tt.innerHTML = 
+        '<div style="font-weight:800;font-size:0.85rem;color:var(--tx);">' + esc(hovered.name) + '</div>' +
+        cartTag +
+        '<div style="font-size:0.7rem;color:var(--mu);margin-top:2px;">Nivel: ' + (hovered.level + 1) + ' · ' + (hovered.celulas || 0) + ' células</div>' +
+        (hovered.description ? '<div style="font-size:0.7rem;color:var(--tx);opacity:.8;margin-top:4px;">' + esc(hovered.description) + '</div>' : '');
+    } else if(tt) {
+      gCanvas.style.cursor = 'grab';
+      tt.style.display = 'none';
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    gDragNode = null;
+    gIsDraggingBg = false;
+    if(gCanvas) gCanvas.style.cursor = 'grab';
+  });
+
+  // Zoom con rueda del ratón
+  gCanvas.onwheel = (e) => {
+    e.preventDefault();
+    const rect = gCanvas.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    const zoomFactor = e.deltaY < 0 ? 1.12 : 0.89;
+    const newK = Math.max(0.2, Math.min(4.0, gTransform.k * zoomFactor));
+
+    // Centrar zoom en el punto del cursor
+    gTransform.x = mouseX - (mouseX - gTransform.x) * (newK / gTransform.k);
+    gTransform.y = mouseY - (mouseY - gTransform.y) * (newK / gTransform.k);
+    gTransform.k = newK;
+  };
+}
+
+function graphTogglePhysics() {
+  gPhysicsRunning = !gPhysicsRunning;
+  $('btn-graph-physics').textContent = gPhysicsRunning ? "⏸️ Pausar Física" : "▶️ Reanudar Física";
+}
+
+function graphResetView() {
+  if(!gCanvas || gNodes.length === 0) return;
+  
+  // Calcular bounding box de los nodos
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+  gNodes.forEach(n => {
+    if(n.x < minX) minX = n.x;
+    if(n.x > maxX) maxX = n.x;
+    if(n.y < minY) minY = n.y;
+    if(n.y > maxY) maxY = n.y;
+  });
+
+  const w = gCanvas.width || 1200;
+  const h = gCanvas.height || 700;
+  const bw = Math.max(100, maxX - minX + 160);
+  const bh = Math.max(100, maxY - minY + 160);
+  const scale = Math.max(0.4, Math.min(1.4, Math.min(w / bw, h / bh)));
+
+  gTransform.k = scale;
+  gTransform.x = w / 2 - ((minX + maxX) / 2) * scale;
+  gTransform.y = h / 2 - ((minY + maxY) / 2) * scale;
+}
+</script>
+
+</body>
+</html>

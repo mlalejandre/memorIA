@@ -1,0 +1,108 @@
+# ==========================================
+# Recuerdos y Datos Personales (CRÍTICO)
+# ==========================================
+body/memoria/
+experiment/
+interfaz/memoria_store.json
+*.tar.gz
+
+# ==========================================
+# Residuos de parches y backups
+# ==========================================
+*.pre_parche*
+*.bak
+*.tmp
+parche.py
+proyecto_completo.txt
+
+# ==========================================
+# Secretos y entorno local
+# ==========================================
+.env
+.env.local
+
+# ==========================================
+# Python & Sistema Operativo
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+Thumbs.db
+
+# --- [parche-memoria v1] datos privados y artefactos ---
+.parche_backup/
+*.pre_parche
+*.pyc
+.venv/
+venv/
+body/largo_plazo/*
+body/corto_plazo/*
+!body/corto_plazo/.gitkeep
+body/logs/
+body/backups/
+body/largo_plazo_exportado_*/
+
+# --- [parche-memoria v2] ---
+*.egg-info/
+build/
+dist/
+parche*.py
+fix_parche.py
+# Protección de datos y bases de datos locales
+body/largo_plazo/memoria.db*
+body/corto_plazo/sesion.json*
+body/corto_plazo/_archivo.jsonl
+
+# >>> hierarchical-memory (parche.py) >>>
+# Secretos y configuracion local
+.env
+.env.*
+!.env.example
+
+# Datos del usuario: memoria, sesiones, copias, exportaciones (solo se versionan los .gitkeep)
+body/**/*
+!body/**/
+!body/**/.gitkeep
+memoria.db
+memoria.db-*
+*.db
+*.db-shm
+*.db-wal
+sesion.json
+sesion.json.*
+_archivo.jsonl
+_ltm_pendiente.jsonl
+*.cartridge
+backups/
+exportaciones/
+
+# Salidas generadas
+proyecto_completo.txt
+informe*.json
+hmem_prueba_*/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+build/
+dist/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Sistema / editores
+.DS_Store
+.idea/
+.vscode/
+
+# Copias de seguridad de parches
+.parche_backup/
+.parche3_backup/
+*.bak
+*.pre_parche
+*.tmp
+# <<< hierarchical-memory (parche.py) <<<
