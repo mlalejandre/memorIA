@@ -260,6 +260,13 @@ class TestCartridges(unittest.TestCase):
     def test_garbage_rejected(self):
         self.assertFalse(self.mgr.import_cartridge_b64("basura.cartridge", "AAAA" * 50).get("ok"))
 
+    def test_oversized_sqlite_rejected(self):
+        huge_bytes = b"SQLite format 3\x00" + b"\x00" * 100
+        with mock.patch("cartuchos.MAX_IMPORT_BYTES", 50):
+            res = self.mgr.import_sqlite_db(huge_bytes, "grande")
+            self.assertFalse(res["ok"])
+            self.assertIn("excede el límite", res["error"])
+
     def test_foreign_db_with_trigger_rejected(self):
         db = self.tmp / "evil.db"
         conn = sqlite3.connect(str(db))
@@ -310,6 +317,16 @@ class TestWebSecurity(unittest.TestCase):
         status = resp.status
         conn.close()
         return status
+
+    def test_ipv6_host_accepted(self):
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
+        conn.putrequest("GET", "/api/status", skip_host=True)
+        conn.putheader("Host", f"[::1]:{self.port}")
+        conn.endheaders()
+        resp = conn.getresponse()
+        resp.read()
+        self.assertEqual(resp.status, 200)
+        conn.close()
 
     def test_local_get_ok(self):
         self.assertEqual(self._req("GET", "/api/status"), 200)

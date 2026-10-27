@@ -12,7 +12,7 @@ from socketserver import ThreadingMixIn
 import config as C
 
 HTML_FILE = os.path.join(os.path.dirname(__file__), "index.html")
-ALLOWED_HOSTS = {"127.0.0.1", "localhost"}
+ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 MAX_BODY = 20 * 1024 * 1024
 
 
@@ -37,13 +37,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _origin_ok(self) -> bool:
-        """Defensa contra CSRF / DNS-rebinding: solo Host y Origin locales."""
-        host = (self.headers.get("Host") or "").rsplit(":", 1)[0].strip("[]").lower()
+        """Defensa contra CSRF / DNS-rebinding: Host y Origin locales (IPv4, IPv6 y localhost)."""
+        raw_host = (self.headers.get("Host") or "").strip()
+        if raw_host.startswith("["):
+            end = raw_host.find("]")
+            host = raw_host[1:end].lower() if end != -1 else ""
+        else:
+            host = raw_host.split(":", 1)[0].lower()
         if host not in ALLOWED_HOSTS:
             return False
         origin = self.headers.get("Origin")
         if origin is not None:
-            if (urllib.parse.urlparse(origin).hostname or "").lower() not in ALLOWED_HOSTS:
+            parsed = urllib.parse.urlparse(origin)
+            orig_host = (parsed.hostname or "").strip("[]").lower()
+            if orig_host not in ALLOWED_HOSTS:
                 return False
         return True
 

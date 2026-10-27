@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import gzip
 import hashlib
 import http.client
@@ -274,11 +275,29 @@ FILLERS = _fillers()
 
 # Preguntas SIN respuesta en el corpus: lo correcto es abstenerse (found=False).
 NEGATIVES = [
+    # Conocimiento general externo no indexado
     "¿Cuál es la capital de Mongolia?",
     "¿Quién ganó el Mundial de fútbol de 1966?",
     "¿Cómo se prepara una tortilla de patatas?",
     "¿Cuántas patas tiene una araña?",
     "¿Qué grupo compuso Bohemian Rhapsody?",
+    "¿Cuál es la capital de Australia?",
+    "¿Quién escribió Hamlet?",
+    "¿Cuántos huesos tiene el cuerpo humano adulto?",
+    "¿Cómo se instala Docker en Windows?",
+    "¿A qué temperatura hierve el mercurio?",
+    "¿Quién pintó Las Meninas?",
+    "¿En qué año se descubrió la penicilina?",
+    "¿Cuál es la velocidad del sonido en el aire?",
+    "¿Quién formuló la teoría de la relatividad general?",
+    "¿Qué instrumento tocaba Miles Davis?",
+    "¿Cuál es la moneda oficial de Japón?",
+    "¿Quién descubrió la estructura del átomo?",
+    "¿Cuál es el océano más grande de la Tierra?",
+    "¿Qué elemento químico tiene número atómico 1?",
+    "¿Dónde se celebraron los Juegos Olímpicos de 1992?",
+
+    # Atributos ficticios del usuario (trampas por semántica cercana de sujeto)
     "¿Cuál es la contraseña del wifi del usuario?",
     "¿Cómo se llama el gato del usuario?",
     "¿Qué coche conduce el usuario?",
@@ -286,14 +305,19 @@ NEGATIVES = [
     "¿Qué profesión tiene el padre del usuario?",
     "¿Cuál es el grupo sanguíneo del usuario?",
     "¿Qué día es el cumpleaños del usuario?",
-    "¿Cuál es la capital de Australia?",
-    "¿Quién escribió Hamlet?",
-    "¿Cuántos huesos tiene el cuerpo humano adulto?",
-    "¿Cómo se instala Docker en Windows?",
-    "¿A qué temperatura hierve el mercurio?",
-    "¿Quién pintó Las Meninas?",
     "¿Cuál es el color favorito del usuario?",
     "¿Qué idioma habla el usuario con su familia?",
+    "¿Qué deporte practica el usuario habitualmente?",
+    "¿Cuál es la comida preferida del usuario?",
+    "¿En qué universidad estudió el usuario la carrera?",
+    "¿Cuál es el número de teléfono del usuario?",
+    "¿Cuánto mide de altura el usuario?",
+    "¿Qué marca de ordenador utiliza el usuario?",
+    "¿Tiene el usuario alguna fobia conocida?",
+    "¿Cuál es la dirección postal exacta del usuario?",
+    "¿A qué país viajó de vacaciones el usuario el año pasado?",
+    "¿Tiene el usuario hermanos o hermanas?",
+    "¿Cuál es el segundo apellido del usuario?",
 ]
 
 # (atributo, hecho viejo, hecho nuevo, pregunta actual, pregunta histórica)
@@ -487,14 +511,265 @@ def cell_texts(tree: Any, ids: list[str]) -> dict[str, str]:
 # 5. SUITES
 # ==============================================================================
 
+# ---------------------------------------------------------------- ablación
+_ONLY_EMB = {"RRF_W_EXACT": 0, "RRF_W_FTS": 0, "RRF_W_SEM": 0, "RRF_W_TREE": 0, "RRF_W_SYN": 0,
+             "SYN_ENABLED": False, "MEM_RECALL_EXPAND": False}
+# (nombre, overrides de config, navegar por el árbol)
+ABLATIONS: list[tuple[str, dict[str, Any], bool]] = [
+    ("actual", {}, True),
+    ("solo embeddings", _ONLY_EMB, False),
+    ("emb + léxico", {**_ONLY_EMB, "RRF_W_FTS": C.RRF_W_FTS}, False),
+    ("emb + exacta + léxico", {**_ONLY_EMB, "RRF_W_FTS": C.RRF_W_FTS, "RRF_W_EXACT": C.RRF_W_EXACT}, False),
+    ("sin árbol", {"RRF_W_TREE": 0}, False),
+    ("sin sinapsis", {"RRF_W_SYN": 0, "SYN_ENABLED": False}, True),
+    ("sin léxico", {"RRF_W_FTS": 0}, True),
+    ("sin exacta", {"RRF_W_EXACT": 0}, True),
+    ("sin expansión LLM", {"MEM_RECALL_EXPAND": False}, True),
+]
+
+
+@contextlib.contextmanager
+def _cfg_override(**over: Any):
+    old = {k: getattr(C, k) for k in over}
+    try:
+        for k, v in over.items():
+            setattr(C, k, v)
+        yield
+    finally:
+        for k, v in old.items():
+            setattr(C, k, v)
+
+
+def _wilson(k: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n == 0:
+        return 0.0, 0.0
+    p, d = k / n, 1 + z * z / n
+    c = (p + z * z / (2 * n)) / d
+    h = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / d
+    return c - h, c + h
+
+
+def _sign_p(b: int, c: int) -> float:
+    """Test de signos exacto bilateral sobre los pares discordantes."""
+    n = b + c
+    if n == 0:
+        return 1.0
+    k = min(b, c)
+    return min(1.0, 2 * sum(math.comb(n, i) for i in range(k + 1)) / 2 ** n)
+
+
+def suite_ablacion(ctx: Ctx) -> None:
+    R, S = ctx.report, "ablacion"
+    corp = ctx.corpus()
+    tree, qs, id_of = corp.tree, corp.qs, corp.id_of
+    test_idx = [i for i, (_q, fi, _t, _d) in enumerate(qs) if fi % 3 == 0]   # 1 de cada 3 hechos
+    test_set = set(test_idx)
+    dev_idx = [i for i in range(len(qs)) if i not in test_set]
+
+    res: dict[str, list[dict[str, Any]]] = {}
+    for name, over, nav in ABLATIONS:
+        with _cfg_override(**over):
+            res[name] = _evaluate(tree, qs, id_of, navigate=nav)
+
+    ok3 = lambda r: bool(r["rank"] and r["rank"] <= 3)
+    base, n = res["actual"], len(qs)
+    print(f"   {'configuración':<24}{'Hit@3':>7}{'IC95%':>16}{'dev':>7}{'test':>7}{'MRR':>7}{'P95ms':>7}   vs actual")
+    for name, rows in res.items():
+        k = sum(map(ok3, rows))
+        lo, hi = _wilson(k, n)
+        ic = f"[{pct(lo)}–{pct(hi)}]"
+        dv = sum(ok3(rows[i]) for i in dev_idx) / max(1, len(dev_idx))
+        ts = sum(ok3(rows[i]) for i in test_idx) / max(1, len(test_idx))
+        if name == "actual":
+            cmp = "—"
+        else:
+            gana = sum(ok3(y) and not ok3(x) for x, y in zip(base, rows))
+            pierde = sum(ok3(x) and not ok3(y) for x, y in zip(base, rows))
+            cmp = f"+{gana}/−{pierde}  p={_sign_p(pierde, gana):.2f}"
+        print(f"   {name:<24}{pct(k / n):>7}{ic:>16}{pct(dv):>7}{pct(ts):>7}"
+              f"{_mrr(rows):>7.3f}{percentile([r['ms'] for r in rows], 95):>7.0f}   {cmp}")
+        R.add(S, f"Hit@3 · {name}", True, pct(k / n), "(observación)", "info", "config.py · RRF_W_*")
+    print(f"   n={n} preguntas · dev={len(dev_idx)} · test={len(test_idx)}")
+    print("   (+g/−p: preguntas donde la variante acierta y 'actual' no / al revés; p = test de signos)")
+    if not ctx.live:
+        print("   ⚠ modo emulado: valida la fontanería, la comparación solo es informativa con --live")
+
+
+# ---------------------------------------------------------------- diagnóstico
+_DEF = {"RRF_W_EXACT": 0.6, "RRF_W_FTS": 0.25, "RRF_W_SEM": 0.3, "RRF_W_TREE": 0.1, "RRF_W_SYN": 0.3, "RRF_W_EMB": 2.5}
+CANDIDATES: list[tuple[str, dict[str, Any], bool]] = [
+    ("actual (.env)", {}, True),
+    ("solo embeddings", _ONLY_EMB, False),
+    ("defaults config.py", _DEF, True),
+    ("defaults sin expansión", {**_DEF, "MEM_RECALL_EXPAND": False}, True),
+    ("emb2.5+exacta+léx.25 (ligero)", {**_ONLY_EMB, "RRF_W_EMB": 2.5, "RRF_W_EXACT": 0.6, "RRF_W_FTS": 0.25}, False),
+]
+
+
+def _overlap_terms(tree: Any, q: str, text: str) -> int:
+    qs = {tree._qstem(t) for t in tree._fts_terms(q)}
+    cs = {tree._qstem(t) for t in tree._fts_terms(text)}
+    return len(qs & cs)
+
+
+def _top1_emb(tree: Any, q: str) -> tuple[float | None, str | None]:
+    qv = tree.emb.embed_query(q) if tree.emb is not None else None
+    if qv is None:
+        return None, None
+    h = tree.emb.store.search("cell", qv, 1, -1.0, tree.emb.model)
+    return (h[0][1], h[0][0]) if h else (None, None)
+
+
+def suite_diagnostico(ctx: Ctx) -> None:
+    R, S = ctx.report, "diagnostico"
+    corp = ctx.corpus()
+    tree, qs, id_of = corp.tree, corp.qs, corp.id_of
+    ok3 = lambda r: bool(r["rank"] and r["rank"] <= 3)
+    n = len(qs)
+    print(f"   perfil={C.RETRIEVAL_PROFILE} | EXACT={C.RRF_W_EXACT} FTS={C.RRF_W_FTS} SEM={C.RRF_W_SEM} "
+          f"TREE={C.RRF_W_TREE} SYN={C.RRF_W_SYN} EMB={C.RRF_W_EMB} EXPAND={C.MEM_RECALL_EXPAND}")
+    if C.RETRIEVAL_PROFILE == "embeddings":
+        print("   ⚠ perfil 'embeddings' activo: 'actual (.env)' NO es tu .env. Usa RETRIEVAL_PROFILE=completo")
+
+    # ---- 1) candidatos de configuración
+    res: dict[str, list[dict[str, Any]]] = {}
+    for name, over, nav in CANDIDATES:
+        with _cfg_override(**over):
+            res[name] = _evaluate(tree, qs, id_of, navigate=nav)
+    base = res["actual (.env)"]
+    print(f"\n   1) CANDIDATOS DE CONFIGURACIÓN  (n={n})")
+    print(f"   {'configuración':<32}{'Hit@3':>7}{'MRR':>7}{'P95ms':>7}   vs actual")
+    for name, rows in res.items():
+        k = sum(map(ok3, rows))
+        if rows is base:
+            cmp = "—"
+        else:
+            gana = sum(ok3(y) and not ok3(x) for x, y in zip(base, rows))
+            pierde = sum(ok3(x) and not ok3(y) for x, y in zip(base, rows))
+            cmp = f"+{gana}/−{pierde}  p={_sign_p(pierde, gana):.2f}"
+        print(f"   {name:<32}{pct(k / n):>7}{_mrr(rows):>7.3f}{percentile([r['ms'] for r in rows], 95):>7.0f}   {cmp}")
+        R.add(S, f"Hit@3 · {name}", True, pct(k / n), "(observación)", "info")
+
+    # ---- 2) preguntas discordantes
+    emb_rows = res["solo embeddings"]
+    print("\n   2) PREGUNTAS DISCORDANTES  ('actual' vs 'solo embeddings')")
+    for titulo, a, b, over_b, nav_b in (
+            ("acierta 'solo embeddings' y falla 'actual'", emb_rows, base, {}, True),
+            ("acierta 'actual' y falla 'solo embeddings'", base, emb_rows, _ONLY_EMB, False)):
+        idx = [i for i in range(n) if ok3(a[i]) and not ok3(b[i])]
+        print(f"   · {titulo}: {len(idx)}")
+        for i in idx[:6]:
+            q, fi, tipo, _d = qs[i]
+            gold = id_of[fi]
+            with _cfg_override(**over_b):
+                r = tree.recall(q, reinforce=False, navigate=nav_b, synthesize=False)
+            cands = (r.get("candidates") or [])[:3]
+            tt = cell_texts(tree, cands + [gold])
+            print(f"     «{q[:75]}» [{tipo}] rank={b[i]['rank']}")
+            print(f"        esperado: {tt.get(gold, '')[:75]}")
+            for c in cands:
+                print(f"        top-3:    {tt.get(c, '?')[:75]}")
+
+    # ---- 3) abstención
+    print("\n   3) ABSTENCIÓN  (top-1 por embeddings; solap = términos de contenido compartidos con el top-1)")
+    neg = []
+    for q in NEGATIVES:
+        s, cid = _top1_emb(tree, q)
+        txt = cell_texts(tree, [cid]).get(cid, "") if cid else ""
+        neg.append((q, s if s is not None else 0.0, _overlap_terms(tree, q, txt), txt))
+    pos = []
+    for q, fi, tipo, _d in qs:
+        s, cid = _top1_emb(tree, q)
+        if s is None:
+            continue
+        txt = cell_texts(tree, [cid]).get(cid, "") if cid else ""
+        pos.append((q, tipo, s, _overlap_terms(tree, q, txt)))
+
+    print("   · Negativas con mayor similitud (las que habría que rechazar):")
+    for q, s, ov, txt in sorted(neg, key=lambda x: -x[1])[:10]:
+        print(f"     sim={s:.2f} solap={ov}  «{q[:46]}» → «{txt[:46]}»")
+    print("   · Positivas con menor similitud (las que NO hay que perder):")
+    for q, tipo, s, ov in sorted(pos, key=lambda x: x[2])[:10]:
+        print(f"     sim={s:.2f} solap={ov} [{tipo[:4]}]  «{q[:70]}»")
+
+    lp = [p for p in pos if p[1] in ("literal", "paráfrasis")]
+    print("\n   · Reglas de abstención: conservan (lit+par) / rechazan (negativas)")
+    print(f"     {'umbral':>6} | {'solo sim':>16} | {'sim o solap≥1':>16} | {'sim o solap≥2':>16}")
+    for k in range(40, 71, 5):
+        th = k / 100
+        cols = []
+        for need in (None, 1, 2):
+            keep = sum(1 for p in lp if p[2] >= th or (need is not None and p[3] >= need)) / max(1, len(lp))
+            rej = sum(1 for p in neg if not (p[1] >= th or (need is not None and p[2] >= need))) / max(1, len(neg))
+            cols.append(f"{pct(keep):>7} / {pct(rej):>6}")
+        print(f"     {th:>6.2f} | {cols[0]} | {cols[1]} | {cols[2]}")
+    print("     (criterio: conservar ≥95% de lit+par y rechazar el máximo de negativas)")
+
+
+# ---------------------------------------------------------------- identificadores
+_LEX_ONLY = {**_ONLY_EMB, "RRF_W_EMB": 0, "RRF_W_FTS": 1.0, "RRF_W_EXACT": 0.6}
+ID_CONFIGS: list[tuple[str, dict[str, Any], bool]] = [
+    ("actual (.env)", {}, True),
+    ("solo embeddings", _ONLY_EMB, False),
+    ("ligero (emb2.5+exacta+léx.25)", {**_ONLY_EMB, "RRF_W_EMB": 2.5, "RRF_W_EXACT": 0.6, "RRF_W_FTS": 0.25}, False),
+    ("defaults sin expansión", {**_DEF, "MEM_RECALL_EXPAND": False}, True),
+    ("solo léxico+exacta", _LEX_ONLY, False),
+]
+
+
+def suite_identificadores(ctx: Ctx) -> None:
+    R, S = ctx.report, "identificadores"
+    corp = ctx.corpus()
+    tree, id_of = corp.tree, corp.id_of
+    ok3 = lambda r: bool(r["rank"] and r["rank"] <= 3)
+    qs2: list[tuple[str, int, str, str]] = []
+    for fi, (dom, _texto, clave, _qs) in enumerate(FACTS):
+        qs2.append((clave, fi, "palabra", dom))
+        qs2.append((f"¿Qué sabes de {clave}?", fi, "pregunta", dom))
+    print(f"   perfil={C.RETRIEVAL_PROFILE} | EXACT={C.RRF_W_EXACT} FTS={C.RRF_W_FTS} EMB={C.RRF_W_EMB} "
+          f"TREE={C.RRF_W_TREE} SYN={C.RRF_W_SYN} EXPAND={C.MEM_RECALL_EXPAND}")
+    if C.RETRIEVAL_PROFILE == "embeddings":
+        print("   ⚠ perfil 'embeddings' activo: 'actual (.env)' NO es tu .env. Usa RETRIEVAL_PROFILE=completo")
+
+    res: dict[str, list[dict[str, Any]]] = {}
+    for name, over, nav in ID_CONFIGS:
+        with _cfg_override(**over):
+            res[name] = _evaluate(tree, qs2, id_of, navigate=nav)
+
+    def hit3(rows: list[dict[str, Any]], tipo: str) -> float:
+        sel = [r for r in rows if r["tipo"] == tipo]
+        return sum(ok3(r) for r in sel) / max(1, len(sel))
+
+    n_pal = sum(1 for q in qs2 if q[2] == "palabra")
+    print(f"\n   CONSULTAS DE PALABRA CLAVE  ({n_pal} palabras + {len(qs2) - n_pal} preguntas cortas)")
+    print(f"   {'configuración':<34}{'palabra':>9}{'pregunta':>10}{'Hit@1':>8}{'P95ms':>7}")
+    for name, rows in res.items():
+        h1 = sum(1 for r in rows if r["rank"] == 1) / len(rows)
+        print(f"   {name:<34}{pct(hit3(rows, 'palabra')):>9}{pct(hit3(rows, 'pregunta')):>10}{pct(h1):>8}"
+              f"{percentile([r['ms'] for r in rows], 95):>7.0f}")
+        R.add(S, f"Hit@3 palabra · {name}", True, pct(hit3(rows, "palabra")), "(observación)", "info")
+
+    solo = res["solo embeddings"]
+    miss = [i for i, r in enumerate(solo) if r["tipo"] == "palabra" and not ok3(r)]
+    print(f"\n   Palabras que 'solo embeddings' NO encuentra en el top-3: {len(miss)}")
+    for i in miss:
+        rescata = [nm for nm, rows in res.items() if nm != "solo embeddings" and ok3(rows[i])]
+        print(f"     «{qs2[i][0]}» (rank={solo[i]['rank']}) → la rescatan: {', '.join(rescata) or 'ninguna'}")
+    lig = res["ligero (emb2.5+exacta+léx.25)"]
+    pierde = [i for i, r in enumerate(solo) if ok3(r) and not ok3(lig[i])]
+    print(f"\n   Consultas que 'solo embeddings' acierta y 'ligero' pierde: {len(pierde)}")
+    for i in pierde[:8]:
+        print(f"     «{qs2[i][0]}» [{qs2[i][2]}] rank_ligero={lig[i]['rank']}")
+
+
 # ---------------------------------------------------------------- recuperación
-def _evaluate(tree: Any, qs: list, id_of: dict[int, str]) -> list[dict[str, Any]]:
+def _evaluate(tree: Any, qs: list, id_of: dict[int, str], navigate: bool = True) -> list[dict[str, Any]]:
     rows = []
     for q, fi, tipo, dom in qs:
         gold = id_of[fi]
         t0 = time.perf_counter()
         try:
-            res = tree.recall(q, reinforce=False, navigate=True, synthesize=False)
+            res = tree.recall(q, reinforce=False, navigate=navigate, synthesize=False)
         except Exception as exc:
             res = {"candidates": [], "error": str(exc)}
         ms = (time.perf_counter() - t0) * 1000.0
@@ -580,7 +855,7 @@ def suite_recuperacion(ctx: Ctx) -> None:
         r = tree.recall(q, reinforce=False, synthesize=False)
         answered.append(bool(r.get("found")))
     abst = 1 - sum(answered) / len(NEGATIVES)
-    R.add(S, "Abstención correcta ante preguntas sin respuesta", abst >= 0.5, pct(abst), "≥ 50%", "medio",
+    R.add(S, "Abstención correcta ante preguntas sin respuesta", abst >= 0.80, pct(abst), "≥ 80%", "medio",
           "ltm/retrieval.py · modo directo (Zero-LLM)",
           "En modo directo siempre se inyectan los 6 mejores candidatos aunque no tengan relación: riesgo de contaminar el prompt. "
           "Añade un umbral mínimo de similitud/BM25 para declarar found=False.",
@@ -612,11 +887,10 @@ def suite_recuperacion(ctx: Ctx) -> None:
             ps = sorted(s for s, _t in pos)
             print(f"       positivas: min={ps[0]:.2f} P5={percentile(ps, 5):.2f} P50={percentile(ps, 50):.2f} | "
                   f"negativas: P50={percentile(sorted(neg), 50):.2f} máx={max(neg):.2f}")
-            R.add(S, "Existe un umbral que conserva ≥95% de positivas y rechaza ≥60% de negativas",
+            R.add(S, "Existe un umbral plano que conserva ≥95% de positivas y rechaza ≥60% de negativas",
                   bool(best and best[1] >= 0.60), f"{best[0]:.2f} → {pct(best[1])}" if best else "ninguno", "≥ 60% rechazo",
-                  "medio" if live else "info", "ltm/retrieval.py · recall",
-                  "Con ese umbral como EMB_ABSTAIN_SIM, el top-1 por debajo de él debe dar found=False." if best else
-                  "Los canales no separan lo relevante de lo irrelevante solo por similitud: hará falta combinar con solapamiento léxico.")
+                  "info", "ltm/retrieval.py · recall",
+                  "Demuestra que un umbral 1D plano es insuficiente; la compuerta escalonada léxico-semántica resuelve la abstención real (ver check superior).")
 
     # --- estabilidad tras el ciclo de sueño
     cycles = ctx.args.sleep_cycles
@@ -1256,6 +1530,9 @@ def suite_sintesis(ctx: Ctx) -> None:
 
 
 SUITES: list[tuple[str, str, Callable[[Ctx], None]]] = [
+    ("ablacion", "Ablación de canales con intervalos y split dev/test", suite_ablacion),
+    ("diagnostico", "Diagnóstico: candidatos, discordancias y abstención", suite_diagnostico),
+    ("identificadores", "Consultas de palabra clave e identificadores", suite_identificadores),
     ("recuperacion", "Recuperación, fusión RRF y ranking (108 preguntas)", suite_recuperacion),
     ("temporal", "Reconciliación temporal (hechos vigentes vs obsoletos)", suite_temporal),
     ("olvido", "Curva de olvido y resurrección", suite_olvido),

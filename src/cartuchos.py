@@ -399,6 +399,8 @@ class CartridgeManager:
         return archive_path
 
     def import_sqlite_db(self, raw_bytes: bytes, fallback_name: str = "importado") -> dict[str, Any]:
+        if len(raw_bytes) > MAX_IMPORT_BYTES:
+            return {"ok": False, "error": f"Base de datos de {len(raw_bytes) // 2**20} MB excede el límite permitido ({MAX_IMPORT_BYTES // 2**20} MB)"}
         created = self.create_cartridge(
             fallback_name.capitalize(),
             f"Importado directamente desde base de datos SQLite ({fallback_name})",

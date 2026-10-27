@@ -161,9 +161,40 @@ class RetrievalMixin:
 
     def _is_relevant_result(self, question: str, candidates: list[dict[str, Any]],
                             sim_of: dict[str, float], exact_hits: list[dict[str, Any]]) -> bool:
-        """Determina con rigor si el candidato principal responde a la consulta o debe haber abstención."""
+        """Compuerta de relevancia escalonada por evidencia léxica y semántica."""
         if not candidates:
             return False
+        top = candidates[0]
+        top_id = str(top["id"])
+        top_sim = sim_of.get(top_id, float(top.get("sim") or 0.0))
+
+        # 1. Coincidencia exacta literal de subcadena
+        if exact_hits and any(str(c["id"]) == top_id for c in exact_hits):
+            return True
+
+        q_stems = {self._qstem(t) for t in self._fts_terms(question)}
+        c_stems = {self._qstem(t) for t in self._fts_terms(top.get("text", ""))}
+        overlap = len(q_stems & c_stems)
+
+        emb = getattr(self, "emb", None)
+        emb_active = emb is not None and emb.available()
+        if not emb_active:
+            return overlap >= 1
+
+        # 2. Con embeddings activos: compuerta escalonada
+        # a) Fuerte solapamiento léxico (≥2 términos compartidos)
+        if overlap >= 2 and top_sim >= 0.35:
+            return True
+        # b) Solapamiento moderado (1 término de contenido relevante)
+        if overlap >= 1 and top_sim >= 0.48:
+            return True
+        # c) Cero solapamiento (paráfrasis pura / inferencia): exige alta confianza semántica (≥0.58)
+        # Esto rechaza preguntas sobre atributos inexistentes del usuario (gato, coche, wifi...) que flotan en 0.46-0.55
+        high_sim = max(0.58, float(getattr(_cfg, "EMB_ABSTAIN_SIM", 0.58)))
+        if overlap == 0 and top_sim >= high_sim:
+            return True
+
+        return False
         top = candidates[0]
         top_id = str(top["id"])
         top_sim = sim_of.get(top_id, float(top.get("sim") or 0.0))
@@ -265,6 +296,8 @@ class RetrievalMixin:
             _w = rrf_weight(_name)
             if not emb_hits and not _name.startswith("sinapsis"):
                 _w = max(_w, 1.0)
+            if _w <= 0:  # canal desactivado: no aporta candidatos al pool
+                continue
             for rank, c in enumerate(hits):
                 scores[c["id"]] = scores.get(c["id"], 0.0) + _w / (_cfg.RRF_K + rank + 1)
                 by_id.setdefault(c["id"], c)

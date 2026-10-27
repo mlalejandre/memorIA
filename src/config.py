@@ -237,7 +237,7 @@ RRF_W_TREE = _float("RRF_W_TREE", "0.1")     # Árbol (antes 0.3)
 RRF_W_SYN = _float("RRF_W_SYN", "0.3")       # Sinapsis hebbianas (valor efectivo medido en el benchmark)
 
 # Umbral de abstención para la compuerta de relevancia
-EMB_ABSTAIN_SIM = _float("EMB_ABSTAIN_SIM", "0.48")
+EMB_ABSTAIN_SIM = _float("EMB_ABSTAIN_SIM", "0.58")
 
 # ============================================================
 # ENLACES ASOCIATIVOS HORIZONTALES (SINAPSIS HEBBIANAS)
@@ -247,3 +247,20 @@ SYN_SPREAD_LIMIT = _int("SYN_SPREAD_LIMIT", "6")     # Máximas células activad
 SYN_MIN_WEIGHT = _float("SYN_MIN_WEIGHT", "1.2")     # Peso mínimo para propagar activación
 SYN_TAU = _float("SYN_TAU", "80.0")                  # Constante de tiempo para decaimiento sináptico
 SYN_PRUNE_BELOW = _float("SYN_PRUNE_BELOW", "0.3")   # Umbral de poda para sinapsis inactivas
+
+# ============================================================
+# PERFIL DE RECUPERACIÓN (ablación del 27/10/2026)  [RETRIEVAL_PROFILE_V2]
+# "embeddings" (defecto): FIJA los pesos RRF (solo canal vectorial) y desactiva la expansión LLM.
+#     Ignora RRF_W_* / MEM_RECALL_EXPAND del entorno o de .env (y lo avisa por stderr).
+# "completo" / "personalizado": usa tus RRF_W_* y MEM_RECALL_EXPAND (entorno, .env o valores por defecto).
+# Si una consulta no obtiene candidatos vectoriales, retrieval.py reactiva el resto de canales.
+# ============================================================
+RETRIEVAL_PROFILE = os.getenv("RETRIEVAL_PROFILE", "embeddings").strip().lower()
+if RETRIEVAL_PROFILE == "embeddings":
+    _ignorados = [k for k in ("RRF_W_EXACT", "RRF_W_FTS", "RRF_W_SEM", "RRF_W_TREE", "RRF_W_SYN",
+                              "MEM_RECALL_EXPAND") if k in os.environ]
+    if _ignorados:
+        print("⚠ RETRIEVAL_PROFILE=embeddings ignora " + ", ".join(_ignorados)
+              + " (usa RETRIEVAL_PROFILE=personalizado para respetarlos)", file=sys.stderr)
+    RRF_W_EXACT = RRF_W_FTS = RRF_W_SEM = RRF_W_TREE = RRF_W_SYN = 0.0
+    MEM_RECALL_EXPAND = False
