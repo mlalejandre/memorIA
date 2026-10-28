@@ -2740,6 +2740,24 @@ def suite_escala(ctx: Ctx) -> None:
         print("   ⚠ modo emulado: valida la fontanería; las cifras solo son informativas con --live")
 
 
+# ---------------------------------------------------------------- LoCoMo  [PARCHE10]
+# Benchmark PÚBLICO: ingesta real de conversaciones ajenas y el mismo OBJETIVO (ver benchmarks/locomo.py).
+def suite_locomo(ctx: Ctx) -> None:
+    _here = str(Path(__file__).resolve().parent)
+    if _here not in sys.path:
+        sys.path.insert(0, _here)
+    import locomo
+
+    def open_tree(path: Path) -> Any:
+        tree = MemoryTree(path, ctx.llm)
+        if ctx.mock:
+            tree.emb = vectores.EmbeddingService(tree, embedder=MockEmbedder())
+        ctx.trees.append(tree)
+        return tree
+
+    locomo.run(ctx, open_tree=open_tree, sync_all=sync_all, north_star=NORTH_STAR)
+
+
 SUITES: list[tuple[str, str, Callable[[Ctx], None]]] = [
     ("ablacion", "Ablación de canales con intervalos y split dev/test", suite_ablacion),
     ("diagnostico", "Diagnóstico: candidatos, discordancias y abstención", suite_diagnostico),
@@ -2750,6 +2768,7 @@ SUITES: list[tuple[str, str, Callable[[Ctx], None]]] = [
     ("dificil", "Corpus denso del mismo dominio: riñón, fármacos y datos personales", suite_dificil),  # [PARCHE3]
     ("reranker", "Reranker y OBJETIVO extremo a extremo (corpus denso)", suite_reranker),  # [PARCHE4]
     ("escala", "OBJETIVO a escala: corpus denso + miles de hechos de relleno", suite_escala),  # [PARCHE6]
+    ("locomo", "OBJETIVO en LoCoMo: benchmark público con ingesta real", suite_locomo),  # [PARCHE10]
     ("temporal", "Reconciliación temporal (hechos vigentes vs obsoletos)", suite_temporal),
     ("olvido", "Curva de olvido y resurrección", suite_olvido),
     ("sinapsis", "Sinapsis hebbianas y activación propagada", suite_sinapsis),

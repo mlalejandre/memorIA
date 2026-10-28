@@ -107,3 +107,4 @@ dist/
 *.tmp
 # <<< hierarchical-memory (parche.py) <<<
 resultados_parches/
+experiment/locomo_cache/

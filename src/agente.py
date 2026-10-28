@@ -23,7 +23,14 @@ BASE_PROMPT = (
     "el contexto inmediato de la charla y la memoria larga para hechos consolidados. Cita las fuentes "
     "de la memoria larga si es relevante. Sobre el usuario y su entorno, afirma solo lo que conste de forma "
     "explícita en la memoria: si un dato personal no consta, dilo claramente en vez de deducirlo de otros "
-    "datos parecidos. Fecha actual: {now}."
+    "datos parecidos. "
+    # [PARCHE12] atribución y fechas relativas: en LoCoMo, 52 de 57 invenciones atribuían a la persona
+    # preguntada lo que otra persona dijo de sí misma (42 de ellas, leyéndolo de la memoria episódica).
+    "Atribución: cada recuerdo indica de quién es o quién lo dijo. Antes de responder, comprueba que el dato "
+    "pertenece a la persona o cosa por la que se pregunta; si en la memoria pertenece a otra (otra persona, otro "
+    "familiar, otro objeto), dilo y corrige la premisa de la pregunta en vez de atribuírselo. Si un recuerdo usa "
+    "una expresión de tiempo relativa (ayer, la semana pasada, el mes que viene), calcula la fecha a partir de la "
+    "fecha de ese recuerdo, no de la actual. Fecha actual: {now}."
 )
 
 TRUNCATED_NOTE = "\n\n[⚠️ Respuesta truncada por el límite de tokens (STM_ANSWER_MAX_TOKENS).]"
@@ -304,6 +311,8 @@ class Agent:
             if fresh:
                 parts.append("\n## Recuerdos literales de conversaciones pasadas (memoria episódica)")
                 parts.append("Estos episodios son transcripciones fechadas de lo que se dijo entonces, no necesariamente el estado actual. Para preguntas sobre el presente, prioriza los hechos de memoria a largo plazo cuya vigencia esté activa; usa episodios como contexto histórico y no como prueba de que un hecho siga vigente.")
+                parts.append("Cada episodio indica quién habló: lo que alguien cuenta en primera persona («yo», «mi») "
+                             "es de quien habla, no de su interlocutor.")  # [PARCHE12]
                 for e in fresh:
                     parts.append(f"[{fmt_ts(e['ts'])} · {role_label(e)}] {e['text'][:500]}")
         return "\n".join(parts)

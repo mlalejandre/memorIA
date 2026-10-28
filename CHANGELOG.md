@@ -1,5 +1,15 @@
 # Changelog
 
+<!-- [PARCHE10] -->
+## Unreleased
+- New benchmark suite `locomo`: the public LoCoMo benchmark (Maharana et al., ACL 2024), ingested through the real pipeline (`extract_facts` → `store()` + episodic memory) and measured against the same objective. Its 446 adversarial questions (category 5) measure invention with far more cases than our 31 personal near-misses, and every failed answer is attributed to ingestion, retrieval, selection or answering.
+- The dataset is downloaded at runtime and checked by sha256 (not redistributed). Ingested memories are cached in `experiment/locomo_cache/` (git-ignored) and ingestion is resumable.
+<!-- [PARCHE11] -->
+- LoCoMo diagnostics: identity of every injected fact (asked person / other person / anonymous "the user"), invention rate with and without anonymous facts in context, rank and coverage of the evidence (top-K), top-1 similarity of answerable vs adversarial questions, and the full context of each question in the audit file.
+- No change to the memory's behaviour (LoCoMo suite and diagnostics).
+<!-- [PARCHE12] -->
+- Agent prompt: check that a remembered fact belongs to the person or thing asked about and correct the question's premise when it belongs to someone else; resolve relative time expressions from the memory's own date; in episodic memory, first-person statements belong to the speaker. Motivated by a manual audit of LoCoMo: 52 of 57 inventions attributed one person's statement to the other.
+
 <!-- [PARCHE9] -->
 ## 0.3.0a1 (2026-10-28)
 Objective, measured end to end with the real agent: correct answers ≥ 95 % · invented personal facts ≤ 5 % ·

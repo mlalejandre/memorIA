@@ -580,6 +580,20 @@ class TestNoDeductionRule(unittest.TestCase):  # [PARCHE6]
         self.assertIn("en vez de deducirlo", system)
 
 
+class TestAttributionRule(unittest.TestCase):  # [PARCHE12]
+    def test_attribution_and_relative_dates_reach_prompt(self):
+        from agente import Agent
+        system = Agent._build_system(None, {}, {"found": False}, None)
+        self.assertIn("corrige la premisa de la pregunta", system)
+        self.assertIn("a partir de la fecha de ese recuerdo", system)
+
+    def test_episodic_block_explains_speaker(self):
+        from agente import Agent
+        epi = [{"ts": 1700000000.0, "role": "user", "text": "Evan: perdí mis llaves"}]
+        system = Agent._build_system(None, {"recent": [], "hits": []}, {"found": False}, epi)
+        self.assertIn("es de quien habla, no de su interlocutor", system)
+
+
 class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
     def test_append_without_rebuild_and_delete_rebuilds(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))

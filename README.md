@@ -179,6 +179,7 @@ Benchmark with measurable goals (never touches your real memory; uses temporary 
 python3 benchmarks/prueba.py          # emulated LLM/embeddings: validates logic, not semantic quality
 python3 benchmarks/prueba.py --live   # real servers from .env
 python3 benchmarks/prueba.py --live --only escala   # the objective at 10k / 100k facts
+python3 benchmarks/prueba.py --live --only locomo   # public benchmark LoCoMo (real ingestion; hours, cached, resumable)
 ```
 
 ## ⚠️ Known limitations
@@ -187,7 +188,8 @@ python3 benchmarks/prueba.py --live --only escala   # the objective at 10k / 100
 - 31 personal near-miss questions are few: 3.2 % is a single answer and its 95 % confidence interval reaches ≈ 16 %.
 - The scale test bulk-inserts distractors and bypasses `store()` (LLM placement, dedupe, temporal supersession): ingestion throughput and the sleep cycle at 100k facts are untested.
 - The judge is the same LLM that answers.
-- Temporal reconciliation (current vs superseded facts) passes 3/6 present-tense checks in emulated mode, as in 0.2.0a1.
+- Temporal reconciliation (current vs superseded facts) passes 3/6 present-tense checks in emulated mode and 5/6 with real servers.
+- A public benchmark (LoCoMo, `--only locomo`) is wired in, but no LoCoMo result is reported yet: every figure above comes from our own synthetic corpus.
 - Remaining known error: "the younger daughter" can be answered with the older daughter's name.
 
 ## 📄 License

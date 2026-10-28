@@ -1,0 +1,305 @@
+================================================================================
+ RESUMEN DE TRASPASO · memoria-unificada · v0.3.0a1
+ Sesión de trabajo del 28/10/2026 (13:36 → 17:52, Europe/Madrid)
+ Escrito por Claude para Claude: léelo entero antes de proponer nada.
+================================================================================
+
+0. CÓMO RETOMAR (instrucciones para el usuario y para el Claude que lea esto)
+--------------------------------------------------------------------------------
+Al abrir la sesión nueva, adjunta:
+  1. este resumen.txt
+  2. un volcado fresco del proyecto:  python3 scripts/estructura.py  → proyecto_completo.txt
+     (excluye .env, body/, backups y residuos; es lo que el Claude nuevo necesita para
+     generar parches que encajen línea a línea con el código real)
+  3. (opcional, recomendado) el último parche como plantilla del motor de parches:
+     está dentro de
+     /Users/mlalejandre/Desktop/cerebro/memorias/memoria-unificada_historial_parches_v0.3.0a1_20261028_175023.tar.gz
+     con el nombre parche.py (es el parche 9)
+  4. las variables relevantes de tu .env SIN claves (RETRIEVAL_PROFILE, RERANK_MODE,
+     EMB_*, ABSTAIN_*, puertos y modelos), porque .env no entra en el volcado.
+
+Para el Claude futuro:
+  - Habla en español con el usuario. README y CHANGELOG del proyecto están en inglés.
+  - El usuario trabaja "parche tras parche, test tras test": entrega cada mejora como un
+    script parcheN.py que, ejecutado en la raíz, aplica los cambios, ejecuta tests y
+    benchmarks, y termina con un bloque "📋 RESUMEN PARA CLAUDE" que él te pega.
+    (Él suele guardarlos todos como parche.py, sobrescribiendo: no cuentes con tener los
+    anteriores en disco.)
+  - Todo se mide contra el OBJETIVO (sección 2). El usuario insistió: "todas estas
+    mediciones tienen que tener un objetivo claro que no podemos perder de vista,
+    necesito obtener un avance en mi proyecto de memoria infinita para LLM".
+  - No tienes el código de esta sesión: trabaja SIEMPRE sobre el volcado nuevo; no
+    reconstruyas bloques de memoria, porque el motor exige coincidencia exacta.
+
+
+1. QUÉ ES EL PROYECTO
+--------------------------------------------------------------------------------
+Memoria jerárquica "infinita" a largo plazo para LLM locales.
+Ruta: /Users/mlalejandre/Desktop/cerebro/memorias/memoria-unificada
+Máquina del usuario: MacBook Pro (macOS), venv en .venv (Python 3.14 de Homebrew).
+Servidores (llama-server, OpenAI-compatible, en 192.168.1.200):
+  LTM :8087 · STM :8088 · embeddings bge-m3 :8089 · (reranker cross :8090, NO levantado)
+  LLM: nail-35b (responde y también hace de juez en los benchmarks)
+
+Piezas principales:
+  src/agente.py        agente; _build_system arma el prompt con la memoria recuperada
+  src/ltm/retrieval.py recuperación (canales, fusión RRF, compuerta de relevancia)
+  src/ltm/tree.py      árbol de memoria (nodos/células, SQLite + FTS5)
+  src/vectores.py      VectorStore de embeddings (búsqueda coseno, numpy opcional)
+  src/rerank.py        reranker (nuevo en P4): modos off / llm / cross
+  src/config.py        toda la configuración por variables de entorno
+  src/cartuchos.py     cartuchos de memoria aislados (import/export)
+  benchmarks/prueba.py banco de pruebas: 20 suites, modo emulado (Mock) o --live
+  tests/test_suite.py  45 tests unitarios
+  body/                DATOS REALES del usuario (cartuchos principal, datos-personales,
+                       alunizaje; 8,3 MB). NUNCA tocar ni versionar.
+
+
+2. EL OBJETIVO (estrella polar, definido en esta sesión)
+--------------------------------------------------------------------------------
+"El agente responde bien lo que está en su memoria, no inventa lo que no está, en
+ tiempo acotado, y esto se mantiene al crecer la memoria."
+
+  NORTH_STAR (benchmarks/prueba.py):
+    correctas ≥ 95 %   · inventa ≤ 5 %   · P95 de recuperación ≤ 1500 ms
+  Medido extremo a extremo: respuesta REAL del agente (Agent._build_system con la memoria
+  recuperada) + juez LLM por mayoría de votos + intervalo de Wilson al 95 %.
+
+  Matices que aprendimos midiendo (importantes):
+  - "correctas del usuario" (las 40 preguntas sobre el usuario) es la métrica que de
+    verdad mide memoria: sin memoria el LLM acierta 61,6 % en global, pero solo 2,5 % en
+    las del usuario.
+  - "inventa" solo cuenta negativas PERSONALES (31): afirmar un dato del usuario que no
+    consta. Las 29 negativas de conocimiento general que el LLM responde con lo que sabe
+    NO son invención.
+  - El juez es verificable: pregunta "¿afirma un valor?", no "¿es correcta?". El juez
+    antiguo marcaba "No tengo ese dato en memoria" como invención (ruido enorme en P6).
+
+
+3. ESTADO ACTUAL (v0.3.0a1, commit 3304d66, etiqueta v0.3.0a1, árbol limpio)
+--------------------------------------------------------------------------------
+Configuración de producción (defaults en config.py):
+  RETRIEVAL_PROFILE=embeddings  → solo canal de embeddings (fuerza RRF_W_* = 0)
+  RERANK_MODE=off               (llm disponible pero sin ganancia medida en el objetivo)
+  RERANK_NONE=tentative · RERANK_TOP_K=8
+  Compuerta: EMB_ABSTAIN_SIM 0.58 · EMB_TENTATIVE_SIM 0.40 · ABSTAIN_OV1/OV2
+  numpy instalado (recomendado en README/requirements; sigue siendo opcional)
+
+RESULTADO CONGELADO (experiment/baseline_v0.3.json · prueba "escala" en real, P8):
+  100.108 hechos en memoria (×927 la base), RERANK_MODE=off:
+    correctas (112 preguntas)          99,1 %   (meta ≥ 95 %)   ✓
+    correctas del usuario (40)         100 %                    ✓
+    inventa dato personal (31)         3,2 % = 1/31, IC95 % ≤ 16,2 %  ✓ (pero n pequeño)
+    P95 de recuperación                156 ms   (meta ≤ 1500)   ✓
+    1.ª consulta tras aprender 1 hecho 92 ms
+    crecimiento de latencia            +0,5 ms por cada 1.000 hechos → ≈587 ms a 1M
+    Hit@1 81,2 % (off) · 89,3 % (llm·tentativa)
+  Con llm·tentativa a 100k: 100 % / 100 % / 0/31, pero P95 513 ms (diferencia = 1 pregunta,
+  dentro del ruido).
+
+Última regresión (P9, 17:41):
+  45 tests OK · 20 suites emuladas sin regresiones (puntuación 9,9/10)
+  Real: recuperación 13/13 (Hit@1 94,4 %, Hit@3 98,1 %, MRR 0,960, P95 107 ms,
+        abstención firme 82,5 %) · temporal 4/4 (presente 5/6, histórico 6/6,
+        invalidación 6/6, 0 falsas invalidaciones) · e2e corpus fácil 12/12 y 0/20.
+
+Único fallo real conocido: "¿Cómo se llama la hija pequeña del usuario?" (no consta) →
+  responde "Alicia" (la hija mayor) o el nombre de la hija de un tercero.
+  NO se parcheó a propósito para no sobreajustar al benchmark.
+
+Limpieza hecha (limpieza.py, 17:50): historial de parches, resultados_parches/ y
+.parche_backup/ archivados en
+  /Users/mlalejandre/Desktop/cerebro/memorias/memoria-unificada_historial_parches_v0.3.0a1_20261028_175023.tar.gz
+  (deshacer: tar -xzf <ese archivo> -C <raíz del proyecto>)
+Ya NO existe .parche_backup/: el "--revertir" de los parches antiguos ya no aplica;
+la red de seguridad ahora es git (etiqueta v0.3.0a1).
+
+
+4. CÓMO LLEGAMOS AQUÍ (historia parche a parche, con mediciones reales)
+--------------------------------------------------------------------------------
+PUNTO DE PARTIDA (código original, v0.2.0a1):
+  recuperación real: Hit@1 94,4 % · Hit@3 98,1 % · MRR 0,960 · P95 294 ms
+  abstención 25 % (pero contaba la banda tentativa como "respuesta")
+  e2e corpus fácil: inventa 1/20 (modo A, producción)
+
+P1 · Banda tentativa hasta el prompt
+  Problema: los recuerdos dudosos (banda tentativa) se trataban como firmes o se perdían.
+  Cambio: _query_ltm_in_process separa firm_items / tent_items; _build_system pinta dos
+  bloques: "## Conocimiento de Memoria a Largo Plazo" (firme) y "## Recuerdos recuperados
+  (posible relevancia)" + LTM_CAUTION (prohíbe inventar/deducir). El benchmark mide la
+  abstención FIRME. e2e usa el prompt real del agente.
+  Resultado: abstención firme 25 % → 82,5 % · inventa 1/20 → 0/20 · Hit@3 intacto.
+
+P2 · Ablación que de verdad compara
+  Problema: las 9 filas de la ablación daban lo mismo (RETRIEVAL_PROFILE=embeddings
+  forzaba los pesos a 0 en todas). Cambio: perfiles explícitos, base por fila, Hit@1,
+  IC, test de signos, "—" cuando no hay nada puntuable.
+  Resultado: solo embeddings 98,1 % Hit@3 / P95 302 ms vs fusión completa 96,3 % /
+  854 ms → la fusión NO ayuda y es 2,7× más lenta. Se mantiene el perfil embeddings.
+
+P3 · Corpus difícil (suite "dificil")
+  56 hechos densos en 3 grupos (riñón, fármacos, datos del usuario) + 52 de ruido,
+  112 preguntas (paráfrasis + indirectas) y negativas cercanas.
+  Resultado: Hit@1 82,1 % · Hit@3 90,2 % · indirectas Hit@1 67,9 %.
+  La compuerta clásica NO distingue negativas cercanas: 18/20 afirmadas con certeza.
+
+P4 · Reranker (src/rerank.py) + OBJETIVO en el benchmark
+  Modos: llm (juez top-8, JSON {"responden":[...]}, ejemplos disjuntos del benchmark)
+  y cross (bge-reranker-v2-m3 vía llama-server --reranking; no hay servidor).
+  Se introduce NORTH_STAR y suite "reranker" con e2e real.
+  Resultado (20 negativas, juez de 1 voto): off 99,1 % / inventa 10 % · llm 100 % / 5 %,
+  Hit@1 82,1 → 95,5 %, P95 919 ms.
+
+P5 · Más negativas y juez por mayoría · reranker llm por defecto
+  60 negativas cercanas (31 personales + 29 de conocimiento), voto por mayoría, Wilson,
+  paralelismo (HMEM_E2E_WORKERS=2).
+  Resultado: off 100 % / 1,7 % · llm·tentativa 100 % / 3,3 % → ambos cumplen.
+  ⚠ ERROR MÍO: activé RERANK_MODE=llm por defecto con evidencia ruidosa. Se corrigió en P8.
+  Auditoría a mano: off 0/60 reales; llm 1/60 (una DEDUCCIÓN: suegra = "Carmen").
+
+P6 · Regla anti-deducción + suite "escala" (1k / 10k hechos de relleno)
+  BASE_PROMPT: "Sobre el usuario y su entorno, afirma solo lo que conste de forma
+  explícita en la memoria: si un dato personal no consta, dilo claramente en vez de
+  deducirlo de otros datos parecidos."
+  Relleno: distractores de terceros con los mismos atributos que el usuario.
+  Resultado bruto a 10.108 hechos: inventa 10 % (off) / 13,3 % (llm) ✗... pero el juez
+  contaba "No tengo ese dato" como invención. Auditado a mano: 1/60 en ambos.
+
+P7 · Juez verificable y métricas que miden memoria
+  Juez "¿afirma un valor?", separación personal / conocimiento, métrica "usuario",
+  referencia sin memoria (61,6 % global, 2,5 % usuario → las de conocimiento no miden
+  memoria).
+  Resultado a 10.108: correctas 97,3 % · usuario 100 % · inventa 3,2 % (off y llm igual).
+  Cuello de botella detectado: búsqueda vectorial en Python puro, +27 ms por 1.000
+  hechos → ≈3,2 s proyectados a 100k.
+
+P8 · Escalabilidad real
+  numpy recomendado; caché vectorial INCREMENTAL (solo añade filas nuevas, sin
+  reconstruir); índice idx_embeddings_kind_model; no se ejecutan canales con peso 0
+  (exacta, FTS, sinapsis) cuando embeddings ya devuelve algo; HMEM_VECTOR_CACHE_MAX
+  200000; RERANK_MODE vuelve a off (mismo objetivo, 3× más lento).
+  Resultado: los 100.108 hechos de la sección 3. OBJETIVO CUMPLIDO A ESCALA.
+
+P9 · Consolidación v0.3.0a1 (sin cambios de comportamiento)
+  Versión, README (tabla de resultados, Known limitations, numpy, RETRIEVAL_PROFILE /
+  RERANK_MODE), CHANGELOG en inglés, baseline congelada, .env limpio (comenta RRF_W_* y
+  MEM_RECALL_EXPAND, ignoradas con el perfil embeddings), .gitignore.
+  Regresión completa en verde → commit 3304d66 + etiqueta v0.3.0a1.
+
+LIMPIEZA · limpieza.py (simulacro por defecto, --aplicar): archiva el historial fuera del
+  repo, borra regenerables, verifica que no se borra nada versionado y que los tests pasan.
+
+
+5. LECCIONES DE MÉTODO (no las repitas)
+--------------------------------------------------------------------------------
+- Mide el OBJETIVO extremo a extremo con el agente real. Hit@1 subió 13 puntos con el
+  reranker y el objetivo NO se movió: las métricas intermedias engañan.
+- El evaluador era la mayor fuente de ruido. Antes de cambiar el sistema por un
+  resultado, audita a mano los fallos y desconfía del juez.
+- No decidas con 20 negativas ni con un juez de 1 voto. Con 31 personales, 1 fallo =
+  3,2 % y el IC llega al 16 %: cualquier "mejora" de 1 pregunta es ruido.
+- No parchees fallos individuales del benchmark (sobreajuste). Los ejemplos de los
+  prompts (juez, reranker) son deliberadamente disjuntos del benchmark: mantenlo así.
+- El modo EMULADO (MockLLM/MockEmbedder) valida la fontanería; sus cifras de calidad no
+  significan nada. Solo --live decide.
+- Sé transparente cuando te equivoques (P5→P8): el usuario lo valora.
+
+Trampas del motor de parches (me pasaron):
+- No metas comillas triples dentro de los bloques r'''...''' de edición: rompen el
+  script generado. Usa comentarios # en vez de docstrings en el código inyectado.
+- Pon los marcadores [PARCHEN] en líneas que no vaya a reemplazar un parche posterior
+  (P8 borró la línea del [PARCHE5] y P9 tuvo que dejar de exigirlo).
+- Nada de comentarios HTML dentro de un encabezado Markdown: van en su propia línea.
+- Si construyes un LLM falso para un test, no lo hagas reaccionar a palabras que
+  pueden aparecer en los prompts reales ("correcta" me dio un falso fallo en P5).
+
+
+6. FORMATO DE LOS PARCHES (para generar parche10.py)
+--------------------------------------------------------------------------------
+Estructura que funciona (copiar del parche 9 si lo adjuntan):
+  PATCH_ID = "parcheN" · MARK = "[PARCHEN]" · REQUIRES = [(archivo, marcador, id), ...]
+  EDITS = [(archivo, bloque_viejo, bloque_nuevo, descripción)]
+    · reemplazo por bloques comparando líneas tras rstrip, soporta CRLF
+    · exige EXACTAMENTE 1 coincidencia; si no, no aplica nada (todo o nada)
+  NEW_FILES = {ruta: contenido}
+  idempotente: si el marcador ya está, no reaplica
+  copia de seguridad en .parche_backup/<PATCH_ID>/ + manifest.json (se volverá a crear;
+    ya está en .gitignore)
+  py_compile de todo lo tocado; si falla, revierte automáticamente
+  flags: --solo-eval · --emulado · --revertir
+  evaluación: tests (python -m unittest discover -s tests), benchmark emulado y/o
+    --live con --only <suites> --json resultados_parches/<id>_<fecha>.json
+  salida en streaming + log en resultados_parches/
+  final: "📋 RESUMEN PARA CLAUDE" con ANTES → AHORA y CRITERIOS DE ACEPTACIÓN
+  Usa sys.executable (el usuario lo lanza con el venv activado).
+  Pruébalo antes de entregarlo: reconstruye el proyecto desde el volcado, aplica,
+  ejecuta tests + benchmark emulado y --revertir.
+
+Benchmark (benchmarks/prueba.py):
+  python3 benchmarks/prueba.py [--live] [--only s1,s2] [--json ruta]
+  suites: ablacion diagnostico identificadores abstencion e2e_abstencion recuperacion
+          dificil reranker escala temporal olvido sinapsis concurrencia integridad
+          persistencia stm cartuchos seguridad ingesta sintesis
+  variables: HMEM_ESCALA="10000,100000" (niveles de relleno) · HMEM_ESCALA_E2E="max"
+             (en qué niveles se hace e2e; incluir 0 añade la referencia sin memoria)
+             HMEM_E2E_WORKERS=2
+  la suite escala completa a 100k tarda ~40 min en real (vectoriza 100.000 hechos).
+  Fallo emulado conocido (no es regresión): temporal "consulta en presente" 3/6.
+
+
+7. LIMITACIONES CONOCIDAS (honestas, también en el README)
+--------------------------------------------------------------------------------
+- Corpus sintético y escrito mientras desarrollábamos: hay que confirmar con MEMORIA
+  REAL del usuario.
+- Pocas negativas personales (31): estadísticamente débil.
+- La prueba de escala inserta en bloque y se salta store() (colocación con LLM, dedupe,
+  sustitución temporal): la ingesta y el ciclo de sueño a 100k NO están probados.
+- El juez es el mismo LLM que responde (sesgo posible).
+- README "Known limitations" dice que temporal pasa 3/6 en emulado; en REAL pasa 5/6
+  (P9). Conviene actualizar esa línea.
+- Observaciones no puntuables: CSP con 'unsafe-inline' en la consola web; no existe un
+  umbral plano de similitud que conserve ≥95 % de positivas y rechace ≥60 % de
+  negativas (0,45 → 37,5 %), por eso hacen falta la banda tentativa y la regla del prompt.
+- body/largo_plazo/memoria.db (740 KB) parece la memoria ANTERIOR a los cartuchos (se
+  copió a cartuchos/principal). Se dejó intacta: falta comprobar que no se pierde nada.
+
+
+8. SUGERENCIAS PARA CONTINUAR (en orden de prioridad)
+--------------------------------------------------------------------------------
+Fase siguiente propuesta y aceptada en principio: "validar con la memoria real".
+
+ 1) Suite "real" sobre los cartuchos del usuario (parche10). Lo más valioso ahora.
+    - Trabajar SIEMPRE sobre una COPIA temporal de body/cartuchos (solo lectura del
+      original; nunca escribir en body/).
+    - Muestrear células reales, generar con el LLM preguntas (literal / paráfrasis /
+      indirecta) y negativas cercanas (atributos que NO constan), revisables a mano y
+      guardadas en experiment/ para que sean un conjunto fijo y reproducible.
+      Ojo: esas preguntas contienen datos personales → fuera de git (gitignore) o
+      anonimizar.
+    - Medir el mismo OBJETIVO (correctas / usuario / inventa / P95) que con el corpus
+      sintético. Si cae, ahí está el trabajo de verdad.
+    - De paso: comparar body/largo_plazo/memoria.db con cartuchos/principal (células
+      que estén solo en la antigua) para decidir si se puede borrar.
+
+ 2) Ingesta realista a escala: meter 1.000–10.000 hechos POR store() (con el LLM) y
+    medir rendimiento de ingesta (hechos/min), dedupe, falsas invalidaciones temporales,
+    y el ciclo de sueño sobre memoria grande. Es lo que la prueba de 100k se saltó.
+
+ 3) Potencia estadística: ampliar a ~150 negativas personales (y más positivas del
+    usuario) para que el IC95 % de "inventa" baje de ~5 %. Hasta entonces, no declares
+    mejoras de ±1 pregunta.
+
+ 4) Juez independiente: un segundo modelo (o al menos otro prompt/temperatura) como juez
+    y medir el acuerdo entre jueces sobre una muestra auditada a mano.
+
+ 5) Solo si 1)–3) lo confirman como patrón general (no por un caso): desambiguación de
+    rol/entidad ("hija pequeña" vs "hija mayor", el usuario vs terceros). No sobreajustar.
+
+ 6) Menores: latencia del turno completo del agente (no solo recuperación); actualizar
+    la línea de temporal en Known limitations; CSP sin unsafe-inline; en CI el
+    benchmark-emulado sigue con continue-on-error (temporal falla en emulado).
+
+Primer mensaje sugerido para la sesión nueva:
+  "Te paso resumen.txt y proyecto_completo.txt. Retomamos memoria-unificada en
+   v0.3.0a1. Siguiente paso: parche10 con la suite de validación sobre mi memoria real."
+================================================================================

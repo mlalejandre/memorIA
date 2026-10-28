@@ -26,6 +26,7 @@ EXCLUDED_DIRS = {
     ".parche3_backup",
     ".parche_backup",
     "resultados_parches",  # [PARCHE1]
+    "locomo_cache",  # [PARCHE10] datos de LoCoMo y memorias ingeridas
 }
 
 # Archivos que NO queremos incluir.
