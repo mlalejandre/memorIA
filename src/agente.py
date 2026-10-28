@@ -14,16 +14,26 @@ from corto_plazo import ShortTermMemory, fmt_ts, role_label
 from largo_plazo import MemoryTree, MemLLM
 from llm import LLM
 
+# [PARCHE6] regla anti-deducción: las 2 invenciones reales del parche 5 fueron deducciones de datos parecidos
 BASE_PROMPT = (
     "Eres un asistente con DOS memorias consultadas en paralelo para cada interacción:\n"
     "- Memoria a corto plazo: resúmenes y mensajes de ESTA conversación.\n"
     "- Memoria a largo plazo: conocimiento consolidado y verificado, con fuentes.\n"
     "Responde en español combinando ambas con tus conocimientos. Prioriza el corto plazo para "
     "el contexto inmediato de la charla y la memoria larga para hechos consolidados. Cita las fuentes "
-    "de la memoria larga si es relevante. Fecha actual: {now}."
+    "de la memoria larga si es relevante. Sobre el usuario y su entorno, afirma solo lo que conste de forma "
+    "explícita en la memoria: si un dato personal no consta, dilo claramente en vez de deducirlo de otros "
+    "datos parecidos. Fecha actual: {now}."
 )
 
 TRUNCATED_NOTE = "\n\n[⚠️ Respuesta truncada por el límite de tokens (STM_ANSWER_MAX_TOKENS).]"
+
+# [PARCHE1] Aviso para recuerdos de la banda tentativa (similitud dudosa): solo se usan si responden de verdad.
+LTM_CAUTION = (
+    "Los siguientes recuerdos se recuperaron por similitud y PUEDEN NO SER RELEVANTES para la pregunta. "
+    "Úsalos solo si responden de verdad y directamente a lo que se pregunta; si no responden, di claramente "
+    "que no tienes ese dato en memoria y no lo inventes ni lo deduzcas a partir de datos parecidos."
+)
 
 
 def split_chunks(content: str, max_chars: int = 2200) -> list[str]:
@@ -220,7 +230,9 @@ class Agent:
                     except Exception as e:
                         results[cid] = {"found": False, "error": str(e)}
 
-            found_items = []
+            # [PARCHE1] Separar recuerdos firmes de los tentativos (por cartucho) para avisar al LLM.
+            firm_items: list[str] = []
+            tent_items: list[str] = []
             all_sources = []
             all_cells = []
             all_methods = set()
@@ -231,17 +243,19 @@ class Agent:
                 if res.get("found") and res.get("answer"):
                     cname = cart_names.get(cid, cid)
                     ans = str(res.get("answer", "")).strip()
-                    found_items.append("📌 [Cartucho: " + str(cname) + "]\n" + ans)
+                    block = "📌 [Cartucho: " + str(cname) + "]\n" + ans
+                    (tent_items if res.get("tentative") else firm_items).append(block)
                     all_sources.extend(res.get("sources", []))
                     all_cells.extend(res.get("cells", []))
                     all_methods.update(res.get("methods", []))
 
-            has_found = len(found_items) > 0
-            combined_answer = "\n\n".join(found_items) if has_found else ""
+            has_found = bool(firm_items or tent_items)
 
             return {
                 "found": has_found,
-                "answer": combined_answer,
+                "tentative": bool(tent_items) and not firm_items,
+                "answer": "\n\n".join(firm_items),
+                "tentative_answer": "\n\n".join(tent_items),
                 "sources": sorted(set(all_sources)),
                 "cells": all_cells,
                 "methods": sorted(all_methods),
@@ -269,11 +283,20 @@ class Agent:
             parts.append("\n## Mensajes antiguos relevantes de esta charla (memoria corta)")
             for h in stm["hits"]:
                 parts.append(f"[{fmt_ts(h['ts'])} · {role_label(h)}] {h['text'][:500]}")
-        if ltm.get("found"):
+        # [PARCHE1] Recuerdos firmes y tentativos en bloques distintos; los tentativos llevan aviso.
+        firm = str(ltm.get("answer") or "").strip() if ltm.get("found") else ""
+        tent = str(ltm.get("tentative_answer") or "").strip() if ltm.get("found") else ""
+        if firm and ltm.get("tentative") and "tentative_answer" not in ltm:
+            firm, tent = "", firm          # resultado de un único árbol (formato antiguo)
+        if firm:
             parts.append("\n## Conocimiento de Memoria a Largo Plazo (Cartuchos Conectados)")
-            parts.append(ltm["answer"])
-            if ltm.get("sources"):
-                parts.append("📚 Fuentes acreditadas: " + "; ".join(ltm["sources"]))
+            parts.append(firm)
+        if tent:
+            parts.append("\n## Recuerdos recuperados (posible relevancia)")
+            parts.append(LTM_CAUTION)
+            parts.append(tent)
+        if (firm or tent) and ltm.get("sources"):
+            parts.append("📚 Fuentes acreditadas: " + "; ".join(ltm["sources"]))
         if epi:
             seen = {str(e.get("text", "")).strip() for e in stm.get("recent", [])}
             seen |= {str(h.get("text", "")).strip() for h in stm.get("hits", [])}

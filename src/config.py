@@ -238,6 +238,10 @@ RRF_W_SYN = _float("RRF_W_SYN", "0.3")       # Sinapsis hebbianas (valor efectiv
 
 # Umbral de abstención para la compuerta de relevancia
 EMB_ABSTAIN_SIM = _float("EMB_ABSTAIN_SIM", "0.58")
+ABSTAIN_OV1_SIM = _float("ABSTAIN_OV1_SIM", "0.48")   # 1 término de contenido compartido: similitud mínima para responder
+ABSTAIN_OV2_SIM = _float("ABSTAIN_OV2_SIM", "0.35")
+# Umbral inferior para la banda tentativa (Modo C de dos niveles)
+EMB_TENTATIVE_SIM = _float("EMB_TENTATIVE_SIM", "0.40")   # >=2 términos compartidos: similitud mínima para responder
 
 # ============================================================
 # ENLACES ASOCIATIVOS HORIZONTALES (SINAPSIS HEBBIANAS)
@@ -264,3 +268,21 @@ if RETRIEVAL_PROFILE == "embeddings":
               + " (usa RETRIEVAL_PROFILE=personalizado para respetarlos)", file=sys.stderr)
     RRF_W_EXACT = RRF_W_FTS = RRF_W_SEM = RRF_W_TREE = RRF_W_SYN = 0.0
     MEM_RECALL_EXPAND = False
+
+# ============================================================
+# RERANKER  [PARCHE4]
+#   off   = sin reranker (compuerta clásica: embeddings + solapamiento)
+#   llm   = juez LLM: el modelo de la memoria larga decide qué candidatos responden (1 llamada por consulta)
+#   cross = cross-encoder (bge-reranker-v2-m3) servido por llama-server --reranking en RERANK_URL
+# ============================================================
+# [PARCHE8] off por defecto: a 10.108 hechos off y llm dan el mismo OBJETIVO (97,3 % · usuario 100 % · inventa 3,2 %)
+# y llm cuesta 2,2× de latencia + 1 llamada LLM por consulta. RERANK_MODE=llm sigue disponible en .env.
+RERANK_MODE = os.getenv("RERANK_MODE", "off").strip().lower()
+SERVER_PORT_RERANK = _int("SERVER_PORT_RERANK", "8090")
+RERANK_URL = os.getenv("RERANK_URL", f"http://{SERVER_IP}:{SERVER_PORT_RERANK}/v1")
+RERANK_MODEL = os.getenv("RERANK_MODEL", "bge-reranker-v2-m3")
+RERANK_TOP_K = _int("RERANK_TOP_K", "8")             # candidatos que se reordenan
+RERANK_MIN = _float("RERANK_MIN", "0.5")             # cross: puntuación 0-1 mínima para que un recuerdo "responda"
+RERANK_NONE = os.getenv("RERANK_NONE", "tentative").strip().lower()   # si nada responde: tentative | abstain
+RERANK_SIGMOID = os.getenv("RERANK_SIGMOID", "1")     # llama-server devuelve logits: se pasan a 0-1
+RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", "60")

@@ -11,6 +11,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -341,6 +342,270 @@ class TestWebSecurity(unittest.TestCase):
 
     def test_oversized_body_rejected(self):
         self.assertEqual(self._req("POST", "/api/chat", content_length=30 * 1024 * 1024), 400)
+
+
+
+
+class TestTemporalSupersession(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="hmem_temp_"))
+        self.llm = MockLLM()
+        self.tree = MemoryTree(self.tmp / "ltm", self.llm)
+        self.tree.emb = vectores.EmbeddingService(self.tree, embedder=MockEmbedder())
+
+    def tearDown(self):
+        try:
+            self.tree.close()
+        except Exception:
+            pass
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_temporal_supersession_lifecycle(self):
+        # Hechos con predicado común ('trabaja') para validar FTS y supersesión en modo determinista
+        old_fact = "El usuario trabaja en el Banco Santander como analista."
+        new_fact = "El usuario ahora trabaja en Telefónica como ingeniero de software."
+        self.llm.register(old_fact, "Datos personales", "empresa")
+        self.llm.register(new_fact, "Datos personales", "empresa")
+
+        r_old = self.tree.store(old_fact, 7)
+        time.sleep(0.01)
+        r_new = self.tree.store(new_fact, 8)
+
+        # El hecho viejo debe quedar invalidado
+        with self.tree.lock:
+            row = self.tree.conn.execute(
+                "SELECT valid_until, superseded_by, archived FROM cells WHERE id = ?",
+                (r_old["id"],)
+            ).fetchone()
+        self.assertIsNotNone(row["valid_until"])
+        self.assertEqual(row["superseded_by"], r_new["id"])
+        self.assertEqual(row["archived"], 1)
+
+        # Consulta en presente solo recupera el vigente
+        res_now = self.tree.recall("¿Dónde trabaja el usuario?", reinforce=False, synthesize=False)
+        self.assertIn(r_new["id"], res_now.get("candidates", []))
+        self.assertNotIn(r_old["id"], res_now.get("candidates", []))
+
+        # Consulta en pasado sí recupera el histórico
+        res_hist = self.tree.recall("¿Dónde trabajaba el usuario antes?", reinforce=False, synthesize=False)
+        self.assertIn(r_old["id"], res_hist.get("candidates", []))
+
+    def test_complementary_facts_are_not_superseded(self):
+        f1 = "El usuario tiene un perro llamado Thor."
+        f2 = "El usuario tiene un gato llamado Misu."
+        self.llm.register(f1, "Datos personales", "mascota-a")
+        self.llm.register(f2, "Datos personales", "mascota-b")
+
+        r1 = self.tree.store(f1, 7)
+        self.tree.store(f2, 7)
+
+        with self.tree.lock:
+            row = self.tree.conn.execute("SELECT superseded_by FROM cells WHERE id = ?", (r1["id"],)).fetchone()
+        self.assertIsNone(row["superseded_by"])
+
+
+class TestRRFFusion(unittest.TestCase):
+    def test_rrf_fuse_ranking_order(self):
+        list_a = [{"id": "doc1", "val": "A"}, {"id": "doc2", "val": "B"}]
+        list_b = [{"id": "doc2", "val": "B"}, {"id": "doc3", "val": "C"}]
+        fused = vectores.fuse(list_a, list_b, limit=3, k=60)
+        self.assertEqual(fused[0]["id"], "doc2")
+        self.assertEqual(len(fused), 3)
+
+    def test_rrf_fuse_empty(self):
+        fused = vectores.fuse([], [], limit=5)
+        self.assertEqual(fused, [])
+
+
+class TestCartridgeWALCleanup(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="hmem_wal_"))
+        self.mgr = CartridgeManager(root=self.tmp / "cartuchos")
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def test_import_cleans_stale_wal_files(self):
+        c = self.mgr.create_cartridge("Destino", "prueba")
+        cdir = self.mgr.get_cartridge_path(c["id"])
+        stale_wal = cdir / "memoria.db-wal"
+        stale_shm = cdir / "memoria.db-shm"
+        stale_wal.write_bytes(b"residuos_wal_corruptos")
+        stale_shm.write_bytes(b"residuos_shm")
+
+        valid_db = self.tmp / "origen.db"
+        conn = sqlite3.connect(str(valid_db))
+        conn.execute("CREATE TABLE t (x TEXT)")
+        conn.execute("INSERT INTO t VALUES ('ok')")
+        conn.commit()
+        conn.close()
+
+        res = self.mgr.import_sqlite_db(valid_db.read_bytes(), fallback_name="nuevo_origen")
+        self.assertTrue(res.get("ok"))
+        target_dir = self.mgr.get_cartridge_path(res["cartridge"]["id"])
+        self.assertFalse((target_dir / "memoria.db-wal").exists())
+        self.assertFalse((target_dir / "memoria.db-shm").exists())
+
+
+class TestTentativeBandReachesPrompt(unittest.TestCase):  # [PARCHE1]
+    """La banda tentativa de la compuerta debe llegar al prompt con aviso, separada de lo firme."""
+
+    def _agent(self, results):
+        from types import SimpleNamespace
+        from agente import Agent
+        a = Agent.__new__(Agent)
+        a.state = {"ltm_task": "IDLE", "ltm_detail": ""}
+        a._pause_ltm = lambda: None
+        a._resume_ltm = lambda: None
+
+        class _Tree:
+            def __init__(self, r):
+                self.r = r
+
+            def recall(self, q, *args, **kwargs):
+                return dict(self.r)
+
+        a.ltm_trees = {cid: _Tree(r) for cid, r in results.items()}
+        a.ltm = next(iter(a.ltm_trees.values()))
+        a.cartridge_mgr = SimpleNamespace(list_cartridges=lambda: [{"id": c, "name": c.upper()} for c in results])
+        return a
+
+    def test_tentative_only(self):
+        from agente import Agent, LTM_CAUTION
+        a = self._agent({"x": {"found": True, "tentative": True, "answer": "• dato dudoso"}})
+        res = a._query_ltm_in_process("pregunta")
+        self.assertTrue(res["found"])
+        self.assertTrue(res["tentative"])
+        self.assertEqual(res["answer"], "")
+        self.assertIn("dato dudoso", res["tentative_answer"])
+        system = Agent._build_system(None, {}, res, None)
+        self.assertIn(LTM_CAUTION, system)
+        self.assertNotIn("Conocimiento de Memoria a Largo Plazo", system)
+
+    def test_firm_and_tentative_are_separated(self):
+        from agente import Agent, LTM_CAUTION
+        a = self._agent({"x": {"found": True, "tentative": False, "answer": "• dato firme"},
+                         "y": {"found": True, "tentative": True, "answer": "• dato dudoso"}})
+        res = a._query_ltm_in_process("pregunta")
+        self.assertFalse(res["tentative"])
+        system = Agent._build_system(None, {}, res, None)
+        firm_pos = system.index("dato firme")
+        tent_pos = system.index("dato dudoso")
+        self.assertLess(system.index("Conocimiento de Memoria a Largo Plazo"), firm_pos)
+        self.assertLess(system.index(LTM_CAUTION), tent_pos)
+        self.assertLess(firm_pos, system.index(LTM_CAUTION))
+
+    def test_legacy_single_tree_dict(self):
+        from agente import Agent, LTM_CAUTION
+        system = Agent._build_system(None, {}, {"found": True, "tentative": True, "answer": "• viejo"}, None)
+        self.assertIn(LTM_CAUTION, system)
+
+
+class TestReranker(unittest.TestCase):  # [PARCHE4]
+    def _rr(self, answer):
+        from types import SimpleNamespace
+        import rerank
+        llm = SimpleNamespace(ask_json=lambda system, user, attempts=2: answer)
+        return rerank.Reranker(SimpleNamespace(llm=llm))
+
+    _CANDS = [{"id": "a", "text": "El perro del usuario se llama Thor."},
+              {"id": "b", "text": "El gato del usuario se llama Misu."}]
+
+    def test_parse_llamacpp_logits(self):
+        import rerank
+        data = {"results": [{"index": 1, "relevance_score": 3.2}, {"index": 0, "relevance_score": -4.1}]}
+        s = rerank.parse_rerank_response(data, 2)
+        self.assertGreater(s[1], 0.9)
+        self.assertLess(s[0], 0.1)
+
+    def test_parse_rejects_incomplete(self):
+        import rerank
+        with self.assertRaises(ValueError):
+            rerank.parse_rerank_response({"results": [{"index": 0, "relevance_score": 1.0}]}, 2)
+
+    def test_llm_judge_reorders_and_decides(self):
+        with mock.patch.object(C, "RERANK_MODE", "llm"):
+            out = self._rr({"responden": [2]}).rerank("¿Cómo se llama el gato?", self._CANDS)
+        self.assertEqual([c["id"] for c in out["candidates"]], ["b", "a"])
+        self.assertTrue(out["verdict"])
+        self.assertEqual(out["n_relevant"], 1)
+
+    def test_llm_judge_none_answers(self):
+        with mock.patch.object(C, "RERANK_MODE", "llm"):
+            out = self._rr({"responden": []}).rerank("¿Cómo se llama el loro?", self._CANDS)
+        self.assertFalse(out["verdict"])
+        self.assertEqual([c["id"] for c in out["candidates"]], ["a", "b"])
+
+    def test_llm_judge_invalid_json_falls_back(self):
+        with mock.patch.object(C, "RERANK_MODE", "llm"):
+            self.assertIsNone(self._rr({}).rerank("¿Algo?", self._CANDS))
+
+    def test_recall_policy_when_nothing_answers(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_rr_"))
+        try:
+            llm = MockLLM()
+            tree = MemoryTree(tmp / "ltm", llm)
+            tree.emb = vectores.EmbeddingService(tree, embedder=MockEmbedder())
+            llm.register("El río Ebro nace en Fontibre.", "Geografía")
+            tree.store("El río Ebro nace en Fontibre.", 8)
+            tree.emb.sync()
+
+            class _NoAnswer:
+                def enabled(self):
+                    return True
+
+                def rerank(self, q, cands):
+                    return {"mode": "llm", "candidates": list(cands), "verdict": False, "n_relevant": 0,
+                            "public": {"mode": "llm", "verdict": False}}
+
+            tree.reranker = _NoAnswer()
+            with mock.patch.object(C, "RERANK_NONE", "abstain"):
+                r = tree.recall("¿Dónde nace el río Ebro?", reinforce=False, synthesize=False)
+            self.assertFalse(r["found"])
+            self.assertFalse(r["rerank"]["verdict"])
+            with mock.patch.object(C, "RERANK_NONE", "tentative"):
+                r = tree.recall("¿Dónde nace el río Ebro?", reinforce=False, synthesize=False)
+            self.assertTrue(r["found"])
+            self.assertTrue(r["tentative"])
+            tree.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestNoDeductionRule(unittest.TestCase):  # [PARCHE6]
+    def test_rule_reaches_system_prompt(self):
+        from agente import Agent
+        system = Agent._build_system(None, {}, {"found": False}, None)
+        self.assertIn("si un dato personal no consta", system)
+        self.assertIn("en vez de deducirlo", system)
+
+
+class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
+    def test_append_without_rebuild_and_delete_rebuilds(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))
+        try:
+            tree = MemoryTree(tmp / "ltm", MockLLM())
+            svc = vectores.EmbeddingService(tree, embedder=MockEmbedder())
+            e = MockEmbedder()
+            svc.put("cell", "a", e.embed(["perro labrador Thor"])[0])
+            svc.put("cell", "b", e.embed(["gato siamés Misu"])[0])
+            q = e.embed(["hurón Chispa"])[0]
+            svc.store.search("cell", q, 5, -1.0, svc.model)
+            self.assertEqual(svc.store.full_rebuilds, 1)
+            svc.put("cell", "c", e.embed(["hurón Chispa"])[0])
+            hits = svc.store.search("cell", q, 5, -1.0, svc.model)
+            self.assertEqual(hits[0][0], "c")
+            self.assertEqual(svc.store.incremental_appends, 1)
+            self.assertEqual(svc.store.full_rebuilds, 1)
+            with tree.lock:
+                tree.conn.execute("DELETE FROM embeddings WHERE kind = 'cell' AND ref = 'c'")
+                tree.conn.commit()
+            hits = svc.store.search("cell", q, 5, -1.0, svc.model)
+            self.assertNotIn("c", [h[0] for h in hits])
+            self.assertEqual(svc.store.full_rebuilds, 2)
+            tree.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
 
 
 if __name__ == "__main__":

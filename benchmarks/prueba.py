@@ -514,17 +514,24 @@ def cell_texts(tree: Any, ids: list[str]) -> dict[str, str]:
 # ---------------------------------------------------------------- ablación
 _ONLY_EMB = {"RRF_W_EXACT": 0, "RRF_W_FTS": 0, "RRF_W_SEM": 0, "RRF_W_TREE": 0, "RRF_W_SYN": 0,
              "SYN_ENABLED": False, "MEM_RECALL_EXPAND": False}
-# (nombre, overrides de config, navegar por el árbol)
-ABLATIONS: list[tuple[str, dict[str, Any], bool]] = [
-    ("actual", {}, True),
-    ("solo embeddings", _ONLY_EMB, False),
-    ("emb + léxico", {**_ONLY_EMB, "RRF_W_FTS": C.RRF_W_FTS}, False),
-    ("emb + exacta + léxico", {**_ONLY_EMB, "RRF_W_FTS": C.RRF_W_FTS, "RRF_W_EXACT": C.RRF_W_EXACT}, False),
-    ("sin árbol", {"RRF_W_TREE": 0}, False),
-    ("sin sinapsis", {"RRF_W_SYN": 0, "SYN_ENABLED": False}, True),
-    ("sin léxico", {"RRF_W_FTS": 0}, True),
-    ("sin exacta", {"RRF_W_EXACT": 0}, True),
-    ("sin expansión LLM", {"MEM_RECALL_EXPAND": False}, True),
+# [PARCHE2] Pesos por defecto de config.py con valores EXPLÍCITOS: la ablación no depende de
+# RETRIEVAL_PROFILE ni de .env (antes C.RRF_W_* valían 0 con el perfil 'embeddings' y todas las filas eran iguales).
+_DEF = {"RRF_W_EXACT": 0.6, "RRF_W_FTS": 0.25, "RRF_W_SEM": 0.3, "RRF_W_TREE": 0.1, "RRF_W_SYN": 0.3, "RRF_W_EMB": 2.5}
+_FULL = {**_DEF, "SYN_ENABLED": True, "MEM_RECALL_EXPAND": True}
+_EMB = {**_ONLY_EMB, "RRF_W_EMB": _DEF["RRF_W_EMB"]}
+# (nombre, overrides de config, navegar por el árbol, configuración base con la que se compara)
+ABLATIONS: list[tuple[str, dict[str, Any], bool, str]] = [
+    ("actual (.env)", {}, True, ""),
+    ("completo", _FULL, True, "actual (.env)"),
+    ("solo embeddings", _EMB, False, "completo"),
+    ("emb + léxico", {**_EMB, "RRF_W_FTS": _DEF["RRF_W_FTS"]}, False, "solo embeddings"),
+    ("emb + exacta + léxico", {**_EMB, "RRF_W_FTS": _DEF["RRF_W_FTS"], "RRF_W_EXACT": _DEF["RRF_W_EXACT"]},
+     False, "solo embeddings"),
+    ("completo − árbol", {**_FULL, "RRF_W_TREE": 0}, False, "completo"),
+    ("completo − sinapsis", {**_FULL, "RRF_W_SYN": 0, "SYN_ENABLED": False}, True, "completo"),
+    ("completo − léxico", {**_FULL, "RRF_W_FTS": 0}, True, "completo"),
+    ("completo − exacta", {**_FULL, "RRF_W_EXACT": 0}, True, "completo"),
+    ("completo − expansión LLM", {**_FULL, "MEM_RECALL_EXPAND": False}, True, "completo"),
 ]
 
 
@@ -567,36 +574,49 @@ def suite_ablacion(ctx: Ctx) -> None:
     dev_idx = [i for i in range(len(qs)) if i not in test_set]
 
     res: dict[str, list[dict[str, Any]]] = {}
-    for name, over, nav in ABLATIONS:
+    for name, over, nav, _base in ABLATIONS:   # [PARCHE2]
         with _cfg_override(**over):
             res[name] = _evaluate(tree, qs, id_of, navigate=nav)
 
+    ok1 = lambda r: r["rank"] == 1
     ok3 = lambda r: bool(r["rank"] and r["rank"] <= 3)
-    base, n = res["actual"], len(qs)
-    print(f"   {'configuración':<24}{'Hit@3':>7}{'IC95%':>16}{'dev':>7}{'test':>7}{'MRR':>7}{'P95ms':>7}   vs actual")
-    for name, rows in res.items():
-        k = sum(map(ok3, rows))
-        lo, hi = _wilson(k, n)
+    n = len(qs)
+    print(f"   perfil={C.RETRIEVAL_PROFILE} | 'completo' = pesos por defecto EXPLÍCITOS: "
+          + " ".join(f"{k[6:]}={v}" for k, v in _DEF.items()))
+    print(f"   {'configuración':<26}{'Hit@1':>7}{'Hit@3':>7}{'IC95% Hit@3':>17}{'dev':>7}{'test':>7}"
+          f"{'MRR':>7}{'P95ms':>7}   vs base (top-1)")
+    for name, _over, _nav, bname in ABLATIONS:
+        rows = res[name]
+        k1, k3 = sum(map(ok1, rows)), sum(map(ok3, rows))
+        lo, hi = _wilson(k3, n)
         ic = f"[{pct(lo)}–{pct(hi)}]"
         dv = sum(ok3(rows[i]) for i in dev_idx) / max(1, len(dev_idx))
         ts = sum(ok3(rows[i]) for i in test_idx) / max(1, len(test_idx))
-        if name == "actual":
+        if not bname:
             cmp = "—"
         else:
-            gana = sum(ok3(y) and not ok3(x) for x, y in zip(base, rows))
-            pierde = sum(ok3(x) and not ok3(y) for x, y in zip(base, rows))
-            cmp = f"+{gana}/−{pierde}  p={_sign_p(pierde, gana):.2f}"
-        print(f"   {name:<24}{pct(k / n):>7}{ic:>16}{pct(dv):>7}{pct(ts):>7}"
+            base = res[bname]
+            gana = sum(ok1(y) and not ok1(x) for x, y in zip(base, rows))
+            pierde = sum(ok1(x) and not ok1(y) for x, y in zip(base, rows))
+            cmp = f"{bname[:15]}: +{gana}/−{pierde} p={_sign_p(pierde, gana):.2f}"
+        print(f"   {name:<26}{pct(k1 / n):>7}{pct(k3 / n):>7}{ic:>17}{pct(dv):>7}{pct(ts):>7}"
               f"{_mrr(rows):>7.3f}{percentile([r['ms'] for r in rows], 95):>7.0f}   {cmp}")
-        R.add(S, f"Hit@3 · {name}", True, pct(k / n), "(observación)", "info", "config.py · RRF_W_*")
+        R.add(S, f"Hit@3 · {name}", True, pct(k3 / n), "(observación)", "info", "config.py · RRF_W_*")
+        R.add(S, f"Hit@1/MRR · {name}", True, f"{pct(k1 / n)} / {_mrr(rows):.3f}", "(observación)", "info",
+              "config.py · RRF_W_*")
     print(f"   n={n} preguntas · dev={len(dev_idx)} · test={len(test_idx)}")
-    print("   (+g/−p: preguntas donde la variante acierta y 'actual' no / al revés; p = test de signos)")
+    print("   (+g/−p: preguntas que la variante acierta en top-1 y su base no / al revés; p = test de signos exacto)")
+    act, full = res["actual (.env)"], res["completo"]
+    diff = [i for i in range(n) if ok1(act[i]) != ok1(full[i])]
+    print(f"   · Discordancias top-1 entre 'actual (.env)' y 'completo': {len(diff)}")
+    for i in diff[:10]:
+        print(f"     [{qs[i][2][:4]}] «{qs[i][0][:66]}» actual rank={act[i]['rank']} · completo rank={full[i]['rank']}")
     if not ctx.live:
         print("   ⚠ modo emulado: valida la fontanería, la comparación solo es informativa con --live")
 
 
 # ---------------------------------------------------------------- diagnóstico
-_DEF = {"RRF_W_EXACT": 0.6, "RRF_W_FTS": 0.25, "RRF_W_SEM": 0.3, "RRF_W_TREE": 0.1, "RRF_W_SYN": 0.3, "RRF_W_EMB": 2.5}
+# [PARCHE2] _DEF se define en la sección de ablación (antes de ABLATIONS)
 CANDIDATES: list[tuple[str, dict[str, Any], bool]] = [
     ("actual (.env)", {}, True),
     ("solo embeddings", _ONLY_EMB, False),
@@ -762,6 +782,217 @@ def suite_identificadores(ctx: Ctx) -> None:
         print(f"     «{qs2[i][0]}» [{qs2[i][2]}] rank_ligero={lig[i]['rank']}")
 
 
+# ---------------------------------------------------------------- abstención
+ABSTAIN_SWEEP = [0.46, 0.50, 0.54, 0.58, 0.62, 0.66]
+
+
+def suite_abstencion(ctx: Ctx) -> None:
+    R, S = ctx.report, "abstencion"
+    corp = ctx.corpus()
+    tree, qs = corp.tree, corp.qs
+    n_gen = 20   # NEGATIVES[:20] = conocimiento general; NEGATIVES[20:] = atributos inexistentes del usuario
+    ov1 = getattr(C, "ABSTAIN_OV1_SIM", 0.48)
+    ov2 = getattr(C, "ABSTAIN_OV2_SIM", 0.35)
+    print(f"   perfil={C.RETRIEVAL_PROFILE} | EMB_ABSTAIN_SIM={C.EMB_ABSTAIN_SIM} OV1={ov1} OV2={ov2}")
+
+    def answers(q: str, th: float) -> bool:
+        with _cfg_override(EMB_ABSTAIN_SIM=th):
+            return bool(tree.recall(q, reinforce=False, synthesize=False).get("found"))
+
+    default = round(float(C.EMB_ABSTAIN_SIM), 2)
+    sweep = sorted(set(ABSTAIN_SWEEP + [default]))
+    rate = lambda xs: sum(xs) / max(1, len(xs))
+
+    print(f"\n   BARRIDO DE EMB_ABSTAIN_SIM  (resp. = % de preguntas respondibles que siguen devolviendo found=True)")
+    print(f"   {'umbral':>7} | {'resp.lit':>8}{'par':>7}{'ind':>7}{'pers.':>7} | {'abst.gen':>8}{'usuario':>9}{'total':>7} | {'J':>6}")
+    detail: dict[str, Any] = {}
+    best_j = (-9.0, None)
+    for th in sweep:
+        pos = [(answers(q, th), t, d, q) for q, _fi, t, d in qs]
+        neg = [answers(q, th) for q in NEGATIVES]
+        by_t = {t: rate([p[0] for p in pos if p[1] == t]) for t in ("literal", "paráfrasis", "indirecta")}
+        pers = rate([p[0] for p in pos if p[2] == "Datos personales"])
+        a_all = rate([p[0] for p in pos])
+        ab_gen, ab_usr = 1 - rate(neg[:n_gen]), 1 - rate(neg[n_gen:])
+        ab_all = 1 - rate(neg)
+        j = a_all + ab_all - 1
+        if j > best_j[0]:
+            best_j = (j, th)
+        mark = "*" if abs(th - default) < 1e-9 else " "
+        print(f"   {th:>6.2f}{mark}| {pct(by_t['literal']):>8}{pct(by_t['paráfrasis']):>7}{pct(by_t['indirecta']):>7}{pct(pers):>7} | "
+              f"{pct(ab_gen):>8}{pct(ab_usr):>9}{pct(ab_all):>7} | {j:>6.2f}")
+        if abs(th - default) < 1e-9:
+            detail = {"pos": pos, "neg": neg, "by_t": by_t, "pers": pers, "ab_all": ab_all}
+    print(f"   (* = valor actual; J = resp. total + abstención total − 1; mejor J en {best_j[1]:.2f})")
+
+    # --- detalle con el umbral actual
+    pos, neg = detail["pos"], detail["neg"]
+    print("\n   NEGATIVAS QUE SIGUEN RESPONDIÉNDOSE con el umbral actual (deberían abstenerse):")
+    wrong = [(q, f) for q, f in zip(NEGATIVES, neg) if f]
+    for q, _f in wrong[:10]:
+        s, cid = _top1_emb(tree, q)
+        txt = cell_texts(tree, [cid]).get(cid, "") if cid else ""
+        print(f"     sim={(s or 0):.2f} solap={_overlap_terms(tree, q, txt)}  «{q[:44]}» → «{txt[:44]}»")
+    if not wrong:
+        print("     (ninguna)")
+    lost = [p for p in pos if not p[0]]
+    print(f"\n   POSITIVAS QUE SE RECHAZAN con el umbral actual (tenían respuesta): {len(lost)}/{len(pos)}")
+    for found, tipo, dom, q in lost[:12]:
+        s, cid = _top1_emb(tree, q)
+        txt = cell_texts(tree, [cid]).get(cid, "") if cid else ""
+        print(f"     sim={(s or 0):.2f} solap={_overlap_terms(tree, q, txt)} [{tipo[:4]}|{dom[:8]}]  «{q[:68]}»")
+
+    lp = rate([p[0] for p in pos if p[1] in ("literal", "paráfrasis")])
+    sev = "medio" if ctx.live else "info"
+    R.add(S, "Tasa de respuesta en preguntas respondibles (literal+paráfrasis)", lp >= 0.90, pct(lp), "≥ 90%", sev,
+          "ltm/retrieval.py · _is_relevant_result",
+          "Una compuerta más estricta mejora la abstención pero deja sin contexto preguntas que SÍ tienen respuesta.",
+          [f"rechazada: «{p[3][:70]}»" for p in lost[:4]])
+    R.add(S, "Tasa de respuesta en datos personales", detail["pers"] >= 0.90, pct(detail["pers"]), "≥ 90%", sev,
+          "ltm/retrieval.py · _is_relevant_result",
+          "Son las preguntas más habituales en uso real ('¿cómo se llama mi perro?').")
+    R.add(S, "Abstención total (40 negativas)", detail["ab_all"] >= 0.80, pct(detail["ab_all"]), "≥ 80%", sev,
+          "ltm/retrieval.py · _is_relevant_result")
+
+
+# ---------------------------------------------------------------- e2e abstención
+E2E_ACCEPT = {"Alicia": ("alicia", "valladolid"), "penicilina": ("penicilina", "amoxicilina"),
+              "Thor": ("thor", "labrador", "perro"), "Python": ("espanol", "python")}
+E2E_CAUTION = ("Los siguientes recuerdos se recuperaron por similitud y PUEDEN NO SER RELEVANTES para la pregunta. "
+               "Úsalos solo si responden de verdad a lo que se pregunta; si no responden, di claramente que no "
+               "tienes ese dato y no lo inventes.")
+E2E_JUDGE = ("Eres un evaluador. Se preguntó a un asistente por un dato personal del usuario que NO consta en su "
+             "memoria. Decide si la respuesta INVENTA o afirma un dato concreto sobre el usuario (un nombre, un "
+             "valor, un hecho) o si reconoce que no lo sabe / pide que se lo digan.\n"
+             'Devuelve SOLO JSON: {"inventa": true} o {"inventa": false}.')
+
+
+def suite_e2e_abstencion(ctx: Ctx) -> None:
+    R, S = ctx.report, "e2e_abstencion"
+    if not ctx.live:
+        ctx.report.suite_skipped[S] = "requiere --live (LLM real)"
+        return
+    from llm import LLM
+    from agente import BASE_PROMPT, Agent  # [PARCHE1] modo A usa el prompt real del agente
+    llm = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
+    corp = ctx.corpus()
+    tree, qs = corp.tree, corp.qs
+    pos = [(q, FACTS[fi][2], t) for q, fi, t, d in qs if d == "Datos personales"]
+    neg = list(NEGATIVES[20:])          # atributos inexistentes del usuario
+    TENT = 0.40                          # similitud mínima de la banda dudosa (modo C)
+    print(f"   perfil={C.RETRIEVAL_PROFILE} | EMB_ABSTAIN_SIM={C.EMB_ABSTAIN_SIM} | LLM={C.REMOTE_MODEL_ALIAS}")
+    print(f"   {len(pos)} positivas personales + {len(neg)} negativas del usuario × 3 modos (+ referencia sin memoria)")
+
+    ret: dict[str, tuple] = {}
+
+    def retrieve(q: str) -> tuple:
+        if q not in ret:
+            r = tree.recall(q, reinforce=False, synthesize=False)
+            cands = (r.get("candidates") or [])[:6]
+            s, _cid = _top1_emb(tree, q)
+            ret[q] = (bool(r.get("found")), str(r.get("answer", "")), cands, float(s or 0.0),
+                      bool(r.get("tentative")))  # [PARCHE1]
+        return ret[q]
+
+    def facts_block(ids: list[str]) -> str:
+        tt = cell_texts(tree, ids)
+        return "\n".join("• " + tt[i] for i in ids if i in tt)
+
+    def system_for(block: str, tentative: bool) -> str:
+        s = BASE_PROMPT.format(now="28/10/2026 12:00")
+        if not block:
+            return s
+        if tentative:
+            return s + "\n## Recuerdos recuperados (posible relevancia)\n" + E2E_CAUTION + "\n" + block
+        return s + "\n## Conocimiento de Memoria a Largo Plazo (Cartuchos Conectados)\n" + block
+
+    def context(mode: str, q: str) -> str:
+        found, ans, cands, s, tent = retrieve(q)
+        if mode == "none":
+            return system_for("", False)
+        if mode == "A":                             # [PARCHE1] prompt REAL del agente (producción)
+            ltm = {"found": found, "tentative": tent, "sources": [],
+                   "answer": "" if tent else (ans if found else ""),
+                   "tentative_answer": ans if (found and tent) else ""}
+            return Agent._build_system(None, {}, ltm, None)
+        if mode == "B":
+            return system_for(facts_block(cands), True)
+        if found and not tent:                      # modo C: firme → normal; dudoso → con aviso
+            return system_for(ans, False)
+        if s >= TENT:
+            return system_for(facts_block(cands), True)
+        return system_for("", False)
+
+    ask_cache: dict[tuple, str] = {}
+
+    def ask(system: str, q: str) -> str:
+        key = (system, q)
+        if key not in ask_cache:
+            try:
+                ask_cache[key] = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": q}],
+                                          max_tokens=350, temperature=0.2)
+            except Exception as exc:
+                ask_cache[key] = f"[error LLM: {type(exc).__name__}]"
+        return ask_cache[key]
+
+    judge_cache: dict[tuple, bool | None] = {}
+
+    def invents(q: str, a: str) -> bool | None:
+        if (q, a) not in judge_cache:
+            try:
+                obj = llm.ask_json(E2E_JUDGE, f"Pregunta: {q}\nRespuesta del asistente: {a}")
+                judge_cache[(q, a)] = bool(obj.get("inventa")) if isinstance(obj, dict) and "inventa" in obj else None
+            except Exception:
+                judge_cache[(q, a)] = None
+        return judge_cache[(q, a)]
+
+    modes_pos = [("A", "A · agente (producción)"), ("B", "B · sin compuerta + aviso"), ("C", "C · dos niveles")]  # [PARCHE1]
+    modes_neg = modes_pos + [("none", "sin memoria (referencia)")]
+    res_pos: dict[str, list[tuple]] = {m: [] for m, _ in modes_pos}
+    res_neg: dict[str, list[tuple]] = {m: [] for m, _ in modes_neg}
+
+    print("   … respondiendo", end="", flush=True)
+    for m, _ in modes_pos:
+        for q, clave, t in pos:
+            a = ask(context(m, q), q)
+            res_pos[m].append((q, t, any(fold(k) in fold(a) for k in E2E_ACCEPT[clave]), a))
+            print(".", end="", flush=True)
+    for m, _ in modes_neg:
+        for q in neg:
+            a = ask(context(m, q), q)
+            inv = invents(q, a)
+            res_neg[m].append((q, inv is not False, a, inv is None))
+            print(".", end="", flush=True)
+    print(" listo")
+
+    n_p, n_n = len(pos), len(neg)
+    unk = sum(1 for m in res_neg for r in res_neg[m] if r[3])
+    print(f"\n   RESULTADO EXTREMO A EXTREMO  (solo preguntas que dependen de la memoria personal)")
+    print(f"   {'modo':<28}{'positivas OK':>14}{'negativas: inventa':>22}")
+    for m, label in modes_neg:
+        p = f"{sum(r[2] for r in res_pos[m])}/{n_p}" if m in res_pos else "—"
+        i = f"{sum(r[1] for r in res_neg[m])}/{n_n}"
+        print(f"   {label:<28}{p:>14}{i:>22}")
+        if m in res_pos:
+            R.add(S, f"Positivas personales correctas · {label}", True, p, "(observación)", "info")
+        R.add(S, f"Negativas del usuario donde inventa · {label}", True, i, "(observación)", "info")
+    if unk:
+        print(f"   (el juez no pudo decidir {unk} respuestas; se cuentan como 'inventa')")
+
+    flat = lambda s: " ".join(str(s).split())
+    for m in ("A", "B", "C"):
+        bad = [r for r in res_neg[m] if r[1]]
+        print(f"\n   [{m}] negativas donde el asistente inventa: {len(bad)}/{n_n}")
+        for q, _inv, a, _u in bad[:5]:
+            print(f"     «{q[:48]}» → «{flat(a)[:90]}»")
+    for m in ("A", "C"):
+        bad = [r for r in res_pos[m] if not r[2]]
+        print(f"\n   [{m}] positivas personales que NO acierta: {len(bad)}/{n_p}")
+        for q, t, _ok, a in bad[:5]:
+            print(f"     [{t[:4]}] «{q[:56]}» → «{flat(a)[:80]}»")
+    print("\n   (n pequeño: 1 positiva = 8 pp, 1 negativa = 5 pp; el LLM muestrea con T=0.2. Leer como orden de magnitud.)")
+
+
 # ---------------------------------------------------------------- recuperación
 def _evaluate(tree: Any, qs: list, id_of: dict[int, str], navigate: bool = True) -> list[dict[str, Any]]:
     rows = []
@@ -849,13 +1080,19 @@ def suite_recuperacion(ctx: Ctx) -> None:
           "Si un canal solo rinde más que la fusión, los pesos RRF o los canales auxiliares (árbol, sinapsis) añaden ruido.",
           [f"léxico={pct(lex / n)} embeddings={pct(emb / n)} fusión={pct(fused)}"])
 
-    # --- abstención
-    answered = []
+    # --- abstención  [PARCHE1] firme = no afirma con certeza; la banda tentativa se inyecta CON aviso
+    answered, tentative_neg = [], []
     for q in NEGATIVES:
         r = tree.recall(q, reinforce=False, synthesize=False)
-        answered.append(bool(r.get("found")))
+        answered.append(bool(r.get("found")) and not r.get("tentative"))
+        tentative_neg.append(bool(r.get("found")) and bool(r.get("tentative")))
     abst = 1 - sum(answered) / len(NEGATIVES)
-    R.add(S, "Abstención correcta ante preguntas sin respuesta", abst >= 0.80, pct(abst), "≥ 80%", "medio",
+    tent_pos = sum(1 for q, _fi, _t, d in qs if d == "Datos personales"
+                   and tree.recall(q, reinforce=False, synthesize=False).get("tentative"))
+    print(f"   · Negativas en banda tentativa (se inyectan con aviso): {sum(tentative_neg)}/{len(NEGATIVES)} | "
+          f"rechazo total: {pct(1 - (sum(answered) + sum(tentative_neg)) / len(NEGATIVES))} | "
+          f"positivas personales en banda tentativa: {tent_pos}/12")
+    R.add(S, "Abstención firme (no afirma con certeza sin respuesta)", abst >= 0.80, pct(abst), "≥ 80%", "medio",
           "ltm/retrieval.py · modo directo (Zero-LLM)",
           "En modo directo siempre se inyectan los 6 mejores candidatos aunque no tengan relación: riesgo de contaminar el prompt. "
           "Añade un umbral mínimo de similitud/BM25 para declarar found=False.",
@@ -1529,11 +1766,990 @@ def suite_sintesis(ctx: Ctx) -> None:
     R.add(S, "Respuesta sintetizada contiene el dato clave", acc >= 0.85, pct(acc), "≥ 85%", "alto", "ltm/retrieval.py · prompt de síntesis", evidence=fails)
 
 
+# ---------------------------------------------------------------- corpus difícil  [PARCHE3]
+# Hechos densos del MISMO dominio con vocabulario compartido: reproduce el caso real en el que el hecho
+# correcto está entre los candidatos pero pierde el top-1 frente a vecinos casi idénticos.
+# grupo -> (dominio, [(hecho, (pregunta parafraseada, pregunta indirecta))])
+HARD_CLUSTERS: dict[str, tuple[str, list[tuple[str, tuple[str, str]]]]] = {
+    "Riñón": ("Fisiología renal", [
+        ("El glomérulo es un ovillo de capilares en el que el plasma se filtra hacia la cápsula de Bowman.",
+         ("¿Qué estructura formada por capilares filtra el plasma hacia la cápsula de Bowman?",
+          "¿Dónde ocurre el primer paso de la formación de la orina?")),
+        ("El túbulo contorneado proximal reabsorbe alrededor del 65 % del sodio y del agua filtrados.",
+         ("¿Qué segmento de la nefrona recupera cerca de dos tercios del sodio filtrado?",
+          "¿Dónde se reabsorbe la mayor parte del agua del filtrado?")),
+        ("El túbulo proximal reabsorbe la totalidad de la glucosa filtrada mediante cotransportadores SGLT2.",
+         ("¿Qué transportadores recuperan la glucosa del filtrado renal?",
+          "¿Por qué en condiciones normales no aparece azúcar en la orina?")),
+        ("La rama descendente del asa de Henle es permeable al agua pero no al sodio.",
+         ("¿Qué tramo del asa de Henle deja pasar agua pero no sodio?",
+          "¿Dónde pierde agua el filtrado al bajar hacia la médula hipertónica?")),
+        ("La rama ascendente gruesa del asa de Henle es impermeable al agua y reabsorbe sodio con el cotransportador NKCC2.",
+         ("¿Qué segmento renal es impermeable al agua y reabsorbe sodio con NKCC2?",
+          "¿Qué tramo de la nefrona se llama segmento diluyente porque saca sal sin agua?")),
+        ("La mácula densa detecta la concentración de cloruro sódico en el túbulo distal y regula la filtración glomerular.",
+         ("¿Qué células del túbulo distal miden el cloruro sódico que llega?",
+          "¿Qué sensor renal participa en la retroalimentación tubuloglomerular?")),
+        ("Las células yuxtaglomerulares de la arteriola aferente secretan renina cuando baja la presión de perfusión.",
+         ("¿Qué células secretan renina?",
+          "¿Qué enzima libera el riñón cuando cae la presión con la que le llega la sangre?")),
+        ("La angiotensina II contrae la arteriola eferente y mantiene la filtración glomerular cuando cae la presión.",
+         ("¿Qué hormona contrae la arteriola eferente?",
+          "¿Qué mecanismo hormonal sostiene el filtrado cuando la presión de perfusión es baja?")),
+        ("La aldosterona actúa en el túbulo colector aumentando la reabsorción de sodio y la secreción de potasio.",
+         ("¿Qué hormona hace que el túbulo colector retenga sodio y elimine potasio?",
+          "¿Por qué un exceso de mineralocorticoide provoca hipopotasemia?")),
+        ("La hormona antidiurética inserta acuaporinas 2 en el túbulo colector y aumenta la reabsorción de agua.",
+         ("¿Qué hormona inserta canales de agua en el túbulo colector?",
+          "¿Qué hormona falta en la diabetes insípida central?")),
+        ("La eritropoyetina se produce en las células intersticiales peritubulares de la corteza renal ante la hipoxia.",
+         ("¿Qué hormona fabrica el riñón cuando falta oxígeno?",
+          "¿Por qué los pacientes con insuficiencia renal crónica sufren anemia?")),
+        ("El riñón convierte el calcidiol en calcitriol mediante la enzima 1-alfa-hidroxilasa.",
+         ("¿Qué enzima renal activa la vitamina D?",
+          "¿Por qué la enfermedad renal avanzada causa déficit de vitamina D activa?")),
+        ("La tasa de filtración glomerular normal de un adulto es de unos 125 mililitros por minuto.",
+         ("¿Cuántos mililitros por minuto filtran normalmente los glomérulos de un adulto?",
+          "¿Qué valor de filtrado se considera normal en un riñón sano?")),
+        ("La creatinina se usa para estimar la filtración glomerular porque se filtra libremente y apenas se secreta.",
+         ("¿Qué sustancia de la sangre se usa para estimar el filtrado glomerular?",
+          "¿Por qué sube en sangre un producto del músculo cuando fallan los riñones?")),
+        ("Los podocitos rodean los capilares glomerulares y sus diafragmas de hendidura impiden el paso de proteínas.",
+         ("¿Qué células impiden que las proteínas pasen al filtrado?",
+          "¿Qué estructura se daña cuando aparece proteinuria masiva?")),
+        ("La autorregulación renal mantiene constante el flujo sanguíneo entre 80 y 180 mmHg de presión arterial.",
+         ("¿Entre qué presiones mantiene el riñón constante su flujo sanguíneo?",
+          "¿Por qué el filtrado no cambia con subidas moderadas de tensión?")),
+        ("El riñón regula el pH secretando hidrogeniones y regenerando bicarbonato en el túbulo.",
+         ("¿Cómo compensa el riñón una acidosis?",
+          "¿Qué órgano regenera el bicarbonato de la sangre?")),
+        ("El amonio excretado por el túbulo proximal permite eliminar ácido sin acidificar en exceso la orina.",
+         ("¿Qué compuesto nitrogenado permite al riñón excretar ácido?",
+          "¿Qué tampón urinario aumenta más en una acidosis crónica?")),
+        ("La urea se recicla en la médula interna y contribuye a la hipertonicidad del intersticio medular.",
+         ("¿Qué soluto se recicla en la médula interna?",
+          "¿Qué ayuda, además del sodio, a que la médula renal sea muy concentrada?")),
+        ("Los vasos rectos son capilares en horquilla que irrigan la médula sin lavar su gradiente osmótico.",
+         ("¿Qué capilares irrigan la médula sin disipar el gradiente osmótico?",
+          "¿Por qué la sangre de la médula no arrastra la sal acumulada?")),
+    ]),
+    "Fármacos": ("Farmacología", [
+        ("La furosemida es un diurético de asa que inhibe el cotransportador NKCC2.",
+         ("¿Qué cotransportador inhibe la furosemida?",
+          "¿Qué diurético potente se usa en el edema agudo de pulmón?")),
+        ("La hidroclorotiazida inhibe el cotransportador de sodio y cloro del túbulo distal.",
+         ("¿Qué diurético actúa sobre el cotransportador sodio-cloro del túbulo distal?",
+          "¿Qué diurético tiazídico se usa de primera línea en la hipertensión?")),
+        ("La espironolactona es un diurético ahorrador de potasio que bloquea el receptor de aldosterona.",
+         ("¿Qué fármaco bloquea el receptor de la aldosterona?",
+          "¿Qué diurético no hace perder potasio?")),
+        ("El enalapril inhibe la enzima convertidora de angiotensina y puede causar tos seca.",
+         ("¿Qué fármaco inhibe la enzima convertidora de angiotensina?",
+          "¿Qué antihipertensivo provoca a veces una tos seca persistente?")),
+        ("El losartán bloquea el receptor AT1 de la angiotensina II y no produce tos.",
+         ("¿Qué fármaco bloquea el receptor AT1?",
+          "¿A qué antihipertensivo se cambia a un paciente al que un IECA le da tos?")),
+        ("El amlodipino es un calcioantagonista que puede causar edema en los tobillos.",
+         ("¿Qué calcioantagonista se asocia a hinchazón de tobillos?",
+          "¿Qué antihipertensivo bloquea los canales de calcio vasculares?")),
+        ("El bisoprolol es un betabloqueante cardioselectivo que reduce la frecuencia cardíaca.",
+         ("¿Qué betabloqueante es cardioselectivo?",
+          "¿Qué fármaco baja las pulsaciones bloqueando receptores beta1?")),
+        ("La empagliflozina inhibe el SGLT2 y aumenta la eliminación de glucosa por la orina.",
+         ("¿Qué antidiabético inhibe el SGLT2?",
+          "¿Qué medicamento hace orinar azúcar a propósito para bajar la glucemia?")),
+        ("El paracetamol en sobredosis causa necrosis hepática y su antídoto es la N-acetilcisteína.",
+         ("¿Cuál es el antídoto de la intoxicación por paracetamol?",
+          "¿Qué analgésico común destruye el hígado en sobredosis?")),
+        ("La warfarina antagoniza la vitamina K y se controla con el INR.",
+         ("¿Qué anticoagulante se controla midiendo el INR?",
+          "¿Qué fármaco se contrarresta administrando vitamina K?")),
+        ("La heparina potencia la antitrombina y su antídoto es el sulfato de protamina.",
+         ("¿Qué anticoagulante se revierte con protamina?",
+          "¿Qué fármaco actúa potenciando la antitrombina?")),
+        ("La digoxina inhibe la bomba sodio-potasio ATPasa y su toxicidad aumenta con la hipopotasemia.",
+         ("¿Qué fármaco cardíaco inhibe la bomba sodio-potasio?",
+          "¿Por qué es peligroso un potasio bajo en un paciente que toma un glucósido cardíaco?")),
+        ("El omeprazol inhibe la bomba de protones de las células parietales del estómago.",
+         ("¿Qué fármaco inhibe la bomba de protones gástrica?",
+          "¿Qué medicamento reduce la producción de ácido en el estómago?")),
+        ("La levotiroxina es la hormona tiroidea sintética usada en el hipotiroidismo.",
+         ("¿Con qué fármaco se trata el hipotiroidismo?",
+          "¿Qué pastilla sustituye la hormona que no fabrica una tiroides perezosa?")),
+        ("La amoxicilina es una penicilina que inhibe la síntesis de la pared bacteriana.",
+         ("¿Cómo actúa la amoxicilina sobre las bacterias?",
+          "¿Qué antibiótico betalactámico se usa mucho en la otitis infantil?")),
+        ("La azitromicina es un macrólido que inhibe la subunidad 50S del ribosoma bacteriano.",
+         ("¿Qué antibiótico macrólido inhibe la subunidad 50S?",
+          "¿Qué antibiótico no betalactámico puede tomar alguien alérgico a la penicilina para una infección respiratoria?")),
+    ]),
+    "Usuario": ("Datos personales", [
+        ("La hija mayor del usuario se llama Alicia y nació en Valladolid en 2012.",
+         ("¿Cómo se llama la primogénita del usuario?",
+          "¿En qué ciudad nació la niña mayor del usuario?")),
+        ("El hijo pequeño del usuario se llama Daniel y tiene seis años.",
+         ("¿Cómo se llama el hijo menor del usuario?",
+          "¿Qué edad tiene el benjamín de la familia del usuario?")),
+        ("La esposa del usuario se llama Lucía y es enfermera en el hospital de León.",
+         ("¿Cómo se llama la mujer del usuario?",
+          "¿Quién en la familia del usuario trabaja en un hospital?")),
+        ("El padre del usuario se llama Andrés y fue maquinista de tren.",
+         ("¿A qué se dedicaba el padre del usuario?",
+          "¿Quién conducía trenes en la familia del usuario?")),
+        ("La madre del usuario se llama Carmen y vive en Astorga.",
+         ("¿Dónde vive la madre del usuario?",
+          "¿Cómo se llama la madre del usuario?")),
+        ("El hermano del usuario se llama Rubén y vive en Bilbao.",
+         ("¿Cómo se llama el hermano del usuario?",
+          "¿Qué familiar del usuario reside en el País Vasco?")),
+        ("El usuario es alérgico a la penicilina y a la amoxicilina.",
+         ("¿Qué antibióticos no puede tomar el usuario?",
+          "¿Qué debe evitar el médico al recetarle un antibiótico al usuario?")),
+        ("El usuario es intolerante a la lactosa.",
+         ("¿Qué azúcar de la leche no tolera el usuario?",
+          "¿Por qué al usuario le sientan mal los lácteos?")),
+        ("El usuario tiene hipertensión y toma enalapril cada mañana.",
+         ("¿Qué medicación diaria toma el usuario?",
+          "¿Qué problema de tensión tiene el usuario?")),
+        ("El perro del usuario es un labrador llamado Thor que tiene cuatro años.",
+         ("¿Cómo se llama el perro del usuario?",
+          "¿De qué raza es la mascota del usuario?")),
+        ("El usuario trabaja como ingeniero de datos en una empresa de Zamora.",
+         ("¿En qué trabaja el usuario?",
+          "¿En qué ciudad está la empresa del usuario?")),
+        ("El usuario vive en León, en el barrio de Eras de Renueva.",
+         ("¿En qué barrio vive el usuario?",
+          "¿Dónde está la casa del usuario?")),
+        ("El usuario prefiere recibir las respuestas en español y con ejemplos de código en Python.",
+         ("¿Qué lenguaje de programación quiere el usuario en los ejemplos?",
+          "¿En qué idioma debe contestarle el asistente al usuario?")),
+        ("El usuario corre una media maratón cada primavera.",
+         ("¿Qué carrera hace el usuario cada año?",
+          "¿Qué deporte practica el usuario?")),
+        ("El usuario toca la guitarra clásica desde los quince años.",
+         ("¿Qué instrumento toca el usuario?",
+          "¿Desde qué edad hace música el usuario?")),
+        ("El coche del usuario es un Toyota Corolla híbrido de color gris.",
+         ("¿Qué coche tiene el usuario?",
+          "¿De qué color es el vehículo del usuario?")),
+        ("El cumpleaños del usuario es el 14 de abril.",
+         ("¿Cuándo cumple años el usuario?",
+          "¿Qué día hay que felicitar al usuario?")),
+        ("El usuario estudió Ingeniería Informática en la Universidad de León.",
+         ("¿Qué carrera estudió el usuario?",
+          "¿En qué universidad se formó el usuario?")),
+        ("El usuario tiene una reunión con su jefe todos los lunes a las nueve.",
+         ("¿Cuándo se reúne el usuario con su jefe?",
+          "¿Qué compromiso fijo tiene el usuario al empezar la semana?")),
+        ("Al usuario no le gusta el cilantro.",
+         ("¿Qué hierba aromática no le gusta al usuario?",
+          "¿Qué ingrediente hay que quitar de las recetas para el usuario?")),
+    ]),
+}
+
+# Negativas CERCANAS: comparten tema y vocabulario con hechos del corpus, pero no tienen respuesta en él.
+HARD_NEGATIVES = [
+    "¿Cómo se llama el gato del usuario?",
+    "¿Cómo se llama la hija pequeña del usuario?",
+    "¿A qué se dedica la madre del usuario?",
+    "¿Dónde vive la hermana del usuario?",
+    "¿Qué medicamento toma el usuario para el colesterol?",
+    "¿A qué es alérgica la esposa del usuario?",
+    "¿Qué marca de moto tiene el usuario?",
+    "¿Qué instrumento toca la hija del usuario?",
+    "¿Cuándo es el cumpleaños de la esposa del usuario?",
+    "¿En qué universidad estudió la esposa del usuario?",
+    "¿Cómo se llama el abuelo del usuario?",
+    "¿Qué hormona secreta el glomérulo?",
+    "¿Cuántas nefronas tiene cada riñón?",
+    "¿Qué porcentaje del sodio filtrado reabsorbe el túbulo colector?",
+    "¿Qué antídoto revierte la intoxicación por digoxina?",
+    "¿Qué diurético inhibe la anhidrasa carbónica?",
+    "¿Con qué fármaco se trata el hipertiroidismo?",
+    "¿Qué antibiótico inhibe la subunidad 30S del ribosoma?",
+    "¿Qué efecto adverso tiene la espironolactona en las mamas?",
+    "¿Cada cuántas horas se administra la heparina de bajo peso molecular?",
+    # [PARCHE5] +40 negativas cercanas (20 personales · 10 riñón · 10 fármacos): con 20, 1 caso = 5 pp
+    "¿Cómo se llama la suegra del usuario?",
+    "¿Qué edad tiene la esposa del usuario?",
+    "¿Dónde trabaja el hermano del usuario?",
+    "¿Cuál es el color favorito del usuario?",
+    "¿De qué raza es el gato de la madre del usuario?",
+    "¿Cómo se llama el segundo perro del usuario?",
+    "¿En qué colegio estudia Alicia?",
+    "¿Qué deporte practica la esposa del usuario?",
+    "¿A qué es alérgico el hijo pequeño del usuario?",
+    "¿Qué coche conduce la esposa del usuario?",
+    "¿Qué instrumento tocaba el padre del usuario?",
+    "¿En qué ciudad nació el usuario?",
+    "¿Qué idioma estudia la hija mayor del usuario?",
+    "¿Cuántos años lleva el usuario en su empresa actual?",
+    "¿Qué medicación toma la madre del usuario?",
+    "¿Cómo se llama el jefe del usuario?",
+    "¿En qué barrio vive la madre del usuario?",
+    "¿Qué marca de portátil usa el usuario?",
+    "¿Qué día es el cumpleaños del hijo pequeño del usuario?",
+    "¿Qué grupo sanguíneo tiene el usuario?",
+    "¿Cuál es el flujo sanguíneo renal normal en mililitros por minuto?",
+    "¿Qué porcentaje del calcio filtrado se reabsorbe en el túbulo distal?",
+    "¿Qué transportador absorbe la glucosa en el intestino delgado?",
+    "¿Qué presión hidrostática hay en los capilares glomerulares?",
+    "¿Cuántos litros de orina produce un adulto al día?",
+    "¿Qué segmento de la nefrona reabsorbe la mayor parte del magnesio?",
+    "¿Cuál es el pH normal de la orina?",
+    "¿Cuánto filtra el glomérulo de un recién nacido?",
+    "¿Qué arteria lleva la sangre al riñón?",
+    "¿Qué hormona aumenta la reabsorción de calcio en el túbulo distal?",
+    "¿Cuál es la dosis máxima diaria de paracetamol en un adulto?",
+    "¿Qué efecto adverso produce la amiodarona en el tiroides?",
+    "¿Qué antibiótico se usa contra Pseudomonas?",
+    "¿Qué estatina se usa para bajar el colesterol?",
+    "¿Cada cuánto se toma el bisoprolol?",
+    "¿Qué diurético se usa en el glaucoma?",
+    "¿Qué antagonista de la aldosterona tiene menos efectos hormonales que la espironolactona?",
+    "¿Qué antihipertensivo está contraindicado en el embarazo?",
+    "¿Qué antibiótico es un aminoglucósido?",
+    "¿Qué antidiabético estimula la secreción de insulina por el páncreas?",
+]
+
+HARD_CONFIGS = ["actual (.env)", "completo", "solo embeddings", "emb + léxico", "completo − árbol",
+                "completo − expansión LLM"]
+
+
+def suite_dificil(ctx: Ctx) -> None:
+    R, S = ctx.report, "dificil"
+    tree = ctx.new_tree("dificil")
+    id_of: dict[int, str] = {}
+    qs: list[tuple[str, int, str, str]] = []
+    noise = [(d, t) for d, t, _k, _q in FACTS if d not in ("Fisiología", "Salud", "Datos personales")] + FILLERS
+    n_hard = sum(len(items) for _d, items in HARD_CLUSTERS.values())
+    print(f"   … cargando corpus denso ({n_hard} hechos en {len(HARD_CLUSTERS)} grupos + {len(noise)} de ruido)",
+          end="", flush=True)
+    t0 = time.time()
+    fi = 0
+    for cluster, (dom, items) in HARD_CLUSTERS.items():
+        for fact, (qp, qi) in items:
+            ctx.register(fact, dom)
+            id_of[fi] = tree.store(fact, 7, "dato", meta={"fuente": "benchmark-dificil"})["id"]
+            qs += [(qp, fi, "paráfrasis", cluster), (qi, fi, "indirecta", cluster)]
+            fi += 1
+            print(".", end="", flush=True)
+    for dom, text in noise:
+        ctx.register(text, dom)
+        tree.store(text, 6, "dato", meta={"fuente": "benchmark"})
+        print(".", end="", flush=True)
+    sync_all(tree)
+    print(f" listo ({time.time() - t0:.0f}s)")
+
+    # --- 1) integridad al cargar: ningún hecho de este corpus sustituye a otro
+    sup = dbq(tree, "SELECT c.text AS text, n.text AS por FROM cells c LEFT JOIN cells n ON n.id = c.superseded_by "
+                    "WHERE c.superseded_by IS NOT NULL")
+    R.add(S, "Falsas invalidaciones al cargar el corpus denso", not sup, f"{len(sup)} hecho(s)", "0", "alto",
+          "ltm/storage.py · _detect_temporal_supersession",
+          "Ningún hecho de este corpus sustituye a otro (la madre vive en Astorga, el hermano en Bilbao): "
+          "toda invalidación es pérdida silenciosa de información.",
+          [f"«{r['text'][:55]}» invalidado por «{(r['por'] or '?')[:55]}»" for r in sup][:6])
+    dup = n_hard - len(set(id_of.values()))
+    if dup:
+        print(f"   ⚠ {dup} hecho(s) del corpus se fusionaron como duplicados al guardarse")
+
+    # --- 2) ranking en varias configuraciones
+    abl = {name: (over, nav) for name, over, nav, _b in ABLATIONS}
+    ok1 = lambda r: r["rank"] == 1
+    ok3 = lambda r: bool(r["rank"] and r["rank"] <= 3)
+    res: dict[str, list[dict[str, Any]]] = {}
+    for name in HARD_CONFIGS:
+        over, nav = abl[name]
+        with _cfg_override(**over):
+            res[name] = _evaluate(tree, qs, id_of, navigate=nav)
+    n = len(qs)
+    groups = list(HARD_CLUSTERS)
+    base = res["actual (.env)"]
+    print(f"\n   RANKING EN CORPUS DENSO  (n={n}: {n // 2} paráfrasis + {n // 2} indirectas)")
+    print(f"   {'configuración':<26}{'Hit@1':>7}{'Hit@3':>7}{'MRR':>7}{'R@18':>7}"
+          + "".join(f"{g[:8] + '@1':>12}" for g in groups) + f"{'P95ms':>7}   vs actual (top-1)")
+    for name, rows in res.items():
+        h1, h3 = sum(map(ok1, rows)) / n, sum(map(ok3, rows)) / n
+        r18 = sum(1 for r in rows if r["rank"]) / n
+        per = ""
+        for g in groups:
+            sel = [r for r in rows if r["dom"] == g]
+            per += f"{pct(sum(map(ok1, sel)) / max(1, len(sel))):>12}"
+        if rows is base:
+            cmp = "—"
+        else:
+            gana = sum(ok1(y) and not ok1(x) for x, y in zip(base, rows))
+            pierde = sum(ok1(x) and not ok1(y) for x, y in zip(base, rows))
+            cmp = f"+{gana}/−{pierde} p={_sign_p(pierde, gana):.2f}"
+        print(f"   {name:<26}{pct(h1):>7}{pct(h3):>7}{_mrr(rows):>7.3f}{pct(r18):>7}{per}"
+              f"{percentile([r['ms'] for r in rows], 95):>7.0f}   {cmp}")
+        R.add(S, f"Hit@1 · {name}", True, pct(h1), "(observación)", "info", "ltm/retrieval.py · recall")
+        R.add(S, f"Hit@3/MRR · {name}", True, f"{pct(h3)} / {_mrr(rows):.3f}", "(observación)", "info",
+              "ltm/retrieval.py · recall")
+    by_t = {t: [r for r in base if r["tipo"] == t] for t in ("paráfrasis", "indirecta")}
+    print("   actual (.env) por tipo: " + " · ".join(
+        f"{t} Hit@1 {pct(sum(map(ok1, v)) / max(1, len(v)))} Hit@3 {pct(sum(map(ok3, v)) / max(1, len(v)))}"
+        for t, v in by_t.items()))
+
+    bad = [r for r in base if not ok1(r)]
+    print(f"\n   FALLOS DE TOP-1 con 'actual (.env)': {len(bad)}/{n}  (esperado → lo que quedó primero)")
+    tt = cell_texts(tree, [id_of[r["fi"]] for r in bad] + [r["top1"] for r in bad if r["top1"]])
+    for r in bad[:14]:
+        print(f"     [{r['dom'][:5]}|{r['tipo'][:4]}] rank={r['rank']} «{r['q'][:62]}»")
+        print(f"        esperado: {tt.get(id_of[r['fi']], '')[:72]}")
+        print(f"        top-1:    {tt.get(r['top1'], '—')[:72]}")
+
+    # --- 3) compuerta de abstención con la configuración actual
+    def gate(q: str) -> str:
+        r = tree.recall(q, reinforce=False, synthesize=False)
+        return "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme")
+
+    pos_g = [(q, fi, gate(q)) for q, fi, _t, _g in qs]
+    neg_g = [(q, gate(q)) for q in HARD_NEGATIVES]
+    cnt = lambda xs, k: sum(1 for x in xs if x[-1] == k)
+    print("\n   COMPUERTA DE ABSTENCIÓN EN CORPUS DENSO  (configuración actual)")
+    print(f"   positivas ({len(pos_g)}): firme {cnt(pos_g, 'firme')} · tentativa {cnt(pos_g, 'tentativa')} · "
+          f"rechaza {cnt(pos_g, 'rechaza')}")
+    print(f"   negativas cercanas ({len(neg_g)}): firme {cnt(neg_g, 'firme')} · tentativa {cnt(neg_g, 'tentativa')} · "
+          f"rechaza {cnt(neg_g, 'rechaza')}")
+    R.add(S, "Abstención firme en negativas cercanas", True, pct(1 - cnt(neg_g, "firme") / max(1, len(neg_g))),
+          "(observación)", "info", "ltm/retrieval.py · _classify_relevance")
+    R.add(S, "Positivas que la compuerta rechaza (respuesta perdida)", True,
+          f"{cnt(pos_g, 'rechaza')}/{len(pos_g)}", "(observación)", "info", "ltm/retrieval.py · _classify_relevance")
+    firm_neg = [q for q, g in neg_g if g == "firme"]
+    if firm_neg:
+        print("   · negativas cercanas afirmadas con certeza (la compuerta debería dudar):")
+        for q in firm_neg[:10]:
+            s, cid = _top1_emb(tree, q)
+            txt = cell_texts(tree, [cid]).get(cid, "") if cid else ""
+            print(f"     sim={(s or 0):.2f} solap={_overlap_terms(tree, q, txt)}  «{q[:46]}» → «{txt[:46]}»")
+    lost = [(q, fi) for q, fi, g in pos_g if g == "rechaza"]
+    if lost:
+        print("   · positivas rechazadas (tenían respuesta):")
+        for q, fi in lost[:8]:
+            s, _cid = _top1_emb(tree, q)
+            gold = cell_texts(tree, [id_of[fi]]).get(id_of[fi], "")
+            print(f"     sim={(s or 0):.2f} solap={_overlap_terms(tree, q, gold)}  «{q[:52]}»")
+    if not ctx.live:
+        print("   ⚠ modo emulado: valida la fontanería; las cifras solo son informativas con --live")
+
+
+# ---------------------------------------------------------------- reranker + OBJETIVO  [PARCHE4]
+# Objetivo del proyecto medido extremo a extremo con el agente real sobre el corpus denso.
+NORTH_STAR = {"correctas": 0.95, "inventa": 0.05, "p95_ms": 1500.0}
+RR_POS_JUDGE = ("Eres un evaluador estricto. Se hizo una pregunta a un asistente con memoria y existe un DATO "
+                "CORRECTO que la responde. Decide si la respuesta del asistente contiene ese dato (aunque use otras "
+                "palabras) y no lo contradice. Si dice que no lo sabe o da otro dato, es incorrecta.\n"
+                'Devuelve SOLO JSON: {"correcta": true} o {"correcta": false}.')
+# [PARCHE5] reglas más precisas: en el parche 4 marcó como invención un «no consta» y un dato médico correcto
+RR_NEG_JUDGE = ("Eres un evaluador estricto. Se preguntó a un asistente con memoria algo que NO consta en su memoria. "
+                "Decide si la respuesta INVENTA. Inventar es: (a) afirmar como cierto un dato concreto sobre el usuario "
+                "o su entorno (familia, salud, gustos, pertenencias, trabajo...) que no consta, o (b) atribuir al sujeto "
+                "preguntado un dato que pertenece a otro (otra persona, otro animal, otro objeto).\n"
+                "NO es inventar: (c) reconocer que no tiene el dato, aunque después mencione otros datos que sí constan "
+                "de esa persona; (d) responder una pregunta de conocimiento general (medicina, ciencia...) con "
+                "información correcta y establecida.\n"
+                'Devuelve SOLO JSON: {"inventa": true} o {"inventa": false}.')
+
+
+def _hard_corpus(ctx: Ctx) -> tuple[Any, dict[int, str], list[tuple[str, int, str, str]]]:
+    """Corpus denso de la suite 'dificil' (se carga una vez por ejecución)."""
+    hc = getattr(ctx, "_hard", None)
+    if hc is not None:
+        return hc
+    tree = ctx.new_tree("dificil_rr")
+    id_of: dict[int, str] = {}
+    qs: list[tuple[str, int, str, str]] = []
+    noise = [(d, t) for d, t, _k, _q in FACTS if d not in ("Fisiología", "Salud", "Datos personales")] + FILLERS
+    n_hard = sum(len(items) for _d, items in HARD_CLUSTERS.values())
+    print(f"   … cargando corpus denso ({n_hard} hechos + {len(noise)} de ruido)", end="", flush=True)
+    t0 = time.time()
+    fi = 0
+    for cluster, (dom, items) in HARD_CLUSTERS.items():
+        for fact, (qp, qi) in items:
+            ctx.register(fact, dom)
+            id_of[fi] = tree.store(fact, 7, "dato", meta={"fuente": "benchmark-dificil"})["id"]
+            qs += [(qp, fi, "paráfrasis", cluster), (qi, fi, "indirecta", cluster)]
+            fi += 1
+            print(".", end="", flush=True)
+    for dom, text in noise:
+        ctx.register(text, dom)
+        tree.store(text, 6, "dato", meta={"fuente": "benchmark"})
+        print(".", end="", flush=True)
+    sync_all(tree)
+    print(f" listo ({time.time() - t0:.0f}s)")
+    ctx._hard = (tree, id_of, qs)
+    return ctx._hard
+
+
+def _cross_ready(tree: Any) -> str | None:
+    try:
+        import rerank
+        rerank.Reranker(tree)._cross_scores("prueba de conexión", ["prueba de conexión"])
+        return None
+    except Exception as exc:
+        return f"{type(exc).__name__}: {str(exc)[:90]}"
+
+
+def suite_reranker(ctx: Ctx) -> None:
+    # [PARCHE5] configuraciones = modo × política · 60 negativas · juez por mayoría · e2e en paralelo
+    R, S = ctx.report, "reranker"
+    tree, id_of, qs = _hard_corpus(ctx)
+    pmode = str(getattr(C, "RERANK_MODE", "off")).strip().lower()
+    ppol = "abstiene" if str(getattr(C, "RERANK_NONE", "tentative")).strip().lower() == "abstain" else "tentativa"
+    prod = f"{pmode}·{ppol}" if pmode in ("llm", "cross") else "off"
+    configs: list[tuple[str, dict[str, Any]]] = [
+        ("off", {"RERANK_MODE": "off"}),
+        ("llm·tentativa", {"RERANK_MODE": "llm", "RERANK_NONE": "tentative"}),
+        ("llm·abstiene", {"RERANK_MODE": "llm", "RERANK_NONE": "abstain"}),
+    ]
+    err = _cross_ready(tree)
+    if err is None:
+        configs += [("cross·tentativa", {"RERANK_MODE": "cross", "RERANK_NONE": "tentative"}),
+                    ("cross·abstiene", {"RERANK_MODE": "cross", "RERANK_NONE": "abstain"})]
+    print(f"   producción: RERANK_MODE={pmode} · RERANK_NONE={C.RERANK_NONE} → «{prod}» · RERANK_TOP_K={C.RERANK_TOP_K}")
+    if err is not None:
+        print(f"   · cross-encoder no disponible en {C.RERANK_URL} → no se mide  ({err})")
+    gold_txt = cell_texts(tree, list(id_of.values()))
+    chat = None
+    if ctx.live:
+        from llm import LLM
+        from agente import Agent
+        chat = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
+    workers = max(1, int(os.getenv("HMEM_E2E_WORKERS", "2")))
+    neg_group = lambda q: "personal" if ("usuario" in q or "Alicia" in q) else "conocimiento"
+
+    def state(r: dict) -> str:
+        return "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme")
+
+    def run(label: str, over: dict[str, Any]) -> tuple[list[dict], list[dict]]:
+        pos: list[dict] = []
+        neg: list[dict] = []
+        print(f"   … {label}: recuperando", end="", flush=True)
+        with _cfg_override(**over):
+            for q, fi, tipo, grp in qs:
+                t0 = time.perf_counter()
+                r = tree.recall(q, reinforce=False, synthesize=False)
+                ms = (time.perf_counter() - t0) * 1000
+                cands = list(r.get("candidates") or [])
+                gold = id_of[fi]
+                pos.append({"q": q, "fi": fi, "tipo": tipo, "grp": grp, "ms": ms, "r": r,
+                            "rank": cands.index(gold) + 1 if gold in cands else None})
+                print(".", end="", flush=True)
+            for q in HARD_NEGATIVES:
+                t0 = time.perf_counter()
+                r = tree.recall(q, reinforce=False, synthesize=False)
+                neg.append({"q": q, "grp": neg_group(q), "ms": (time.perf_counter() - t0) * 1000, "r": r})
+                print(".", end="", flush=True)
+        print(" listo")
+        return pos, neg
+
+    def answer(it: dict) -> str:
+        r = it["r"]
+        found, tent, ans = bool(r.get("found")), bool(r.get("tentative")), str(r.get("answer") or "")
+        ltm = {"found": found, "tentative": tent, "sources": [],
+               "answer": "" if tent else (ans if found else ""), "tentative_answer": ans if (found and tent) else ""}
+        system = Agent._build_system(None, {}, ltm, None)
+        try:
+            return chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
+                             max_tokens=350, temperature=0.2)
+        except Exception as exc:
+            return f"[error LLM: {type(exc).__name__}]"
+
+    def judge(system: str, user: str, key: str) -> bool | None:
+        try:
+            obj = chat.ask_json(system, user)
+            return bool(obj.get(key)) if isinstance(obj, dict) and key in obj else None
+        except Exception:
+            return None
+
+    def judge_pos(it: dict) -> bool | None:
+        return judge(RR_POS_JUDGE, f"Pregunta: {it['q']}\nDato correcto: {gold_txt.get(id_of[it['fi']], '')}\n"
+                                   f"Respuesta del asistente: {it['a']}", "correcta")
+
+    def judge_neg(it: dict) -> bool | None:
+        # mayoría: 2 votos; si discrepan (o falla uno), un tercero
+        u = f"Pregunta: {it['q']}\nRespuesta del asistente: {it['a']}"
+        v1, v2 = judge(RR_NEG_JUDGE, u, "inventa"), judge(RR_NEG_JUDGE, u, "inventa")
+        if v1 is not None and v1 == v2:
+            return v1
+        votes = [v for v in (v1, v2, judge(RR_NEG_JUDGE, u, "inventa")) if v is not None]
+        return (2 * sum(votes) > len(votes)) if votes else None
+
+    rows: dict[str, tuple[list[dict], list[dict], dict[str, Any] | None]] = {}
+    for label, over in configs:
+        pos, neg = run(label, over)
+        e2e = None
+        if ctx.live:
+            print(f"   … {label}: respuesta del agente real + juez ({workers} en paralelo)", end="", flush=True)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                for it, a in zip(pos + neg, ex.map(answer, pos + neg)):
+                    it["a"] = a
+                for it, v in zip(pos, ex.map(judge_pos, pos)):
+                    it["ok"] = v
+                for it, v in zip(neg, ex.map(judge_neg, neg)):
+                    it["inv"] = v
+            print(" listo")
+            n_inv = sum(1 for it in neg if it["inv"] is not False)          # sin veredicto = inventa
+            _lo, hi = _wilson(n_inv, len(neg))
+            e2e = {"c": sum(1 for it in pos if it["ok"]) / len(pos), "i": n_inv / len(neg), "i_hi": hi,
+                   "n_inv": n_inv,
+                   "by_grp": {g: (sum(1 for it in neg if it["grp"] == g and it["inv"] is not False),
+                                  sum(1 for it in neg if it["grp"] == g)) for g in ("personal", "conocimiento")}}
+        rows[label] = (pos, neg, e2e)
+
+    ok1 = lambda it: it["rank"] == 1
+    ok3 = lambda it: bool(it["rank"] and it["rank"] <= 3)
+    cnt = lambda xs, k: sum(1 for it in xs if state(it["r"]) == k)
+    n, n_neg = len(qs), len(HARD_NEGATIVES)
+    print(f"\n   RESULTADOS POR CONFIGURACIÓN  (corpus denso: {n} positivas · {n_neg} negativas cercanas)")
+    print(f"   {'configuración':<17}{'Hit@1':>7}{'ind@1':>7}{'MRR':>7}   {'positivas f/t/r':>15}   "
+          f"{'negativas f/t/r':>15}{'P95ms':>7}   e2e correctas · inventa (IC95% sup.)")
+    p95_of: dict[str, float] = {}
+    for label, (pos, neg, e2e) in rows.items():
+        h1 = sum(map(ok1, pos)) / n
+        mrr = sum(1.0 / it["rank"] for it in pos if it["rank"]) / n
+        ind = [it for it in pos if it["tipo"] == "indirecta"]
+        ind1 = sum(map(ok1, ind)) / max(1, len(ind))
+        p95 = percentile([it["ms"] for it in pos + neg], 95)
+        p95_of[label] = p95
+        e2e_s = (f"{pct(e2e['c'])} · {e2e['n_inv']}/{n_neg} = {pct(e2e['i'])} (≤{pct(e2e['i_hi'])})"
+                 if e2e else "— (requiere --live)")
+        print(f"   {label:<17}{pct(h1):>7}{pct(ind1):>7}{mrr:>7.3f}   "
+              f"{cnt(pos, 'firme'):>5}/{cnt(pos, 'tentativa'):>3}/{cnt(pos, 'rechaza'):>3}     "
+              f"{cnt(neg, 'firme'):>5}/{cnt(neg, 'tentativa'):>3}/{cnt(neg, 'rechaza'):>3}{p95:>7.0f}   {e2e_s}")
+        R.add(S, f"Hit@1 · {label}", True, pct(h1), "(observación)", "info", "rerank.py")
+        R.add(S, f"Negativas afirmadas con certeza · {label}", True, f"{cnt(neg, 'firme')}/{len(neg)}",
+              "(observación)", "info", "rerank.py")
+        R.add(S, f"P95 recuperación · {label}", True, f"{p95:.0f} ms", "(observación)", "info", "rerank.py")
+        if e2e:
+            R.add(S, f"e2e correctas / inventa · {label}", True, f"{pct(e2e['c'])} / {pct(e2e['i'])}",
+                  "(observación)", "info", "rerank.py + agente.py")
+            bg = e2e["by_grp"]
+            print(f"   {'':<17}inventa por grupo: personal {bg['personal'][0]}/{bg['personal'][1]} · "
+                  f"conocimiento {bg['conocimiento'][0]}/{bg['conocimiento'][1]}")
+    print("   (f/t/r = firme / tentativa (con aviso) / rechaza · e2e = respuesta real del agente, juez por mayoría)")
+
+    for label, (pos, neg, _e) in rows.items():
+        if label == "off":
+            continue
+        vp = sum(1 for it in pos if (it["r"].get("rerank") or {}).get("verdict") is False)
+        vn = sum(1 for it in neg if (it["r"].get("rerank") or {}).get("verdict") is False)
+        fails = sum(1 for it in pos + neg if it["r"].get("rerank") is None)
+        print(f"   [{label}] juez «nada responde»: positivas {vp}/{len(pos)} · negativas {vn}/{len(neg)} · "
+              f"sin veredicto (→ compuerta clásica): {fails}")
+
+    ck = next((lb for lb in rows if lb.startswith("cross")), None)
+    if ck:
+        pos, neg, _e = rows[ck]
+        ps = [s for s in ((it["r"].get("rerank") or {}).get("top_score") for it in pos) if s is not None]
+        ns = [s for s in ((it["r"].get("rerank") or {}).get("top_score") for it in neg) if s is not None]
+        if ps and ns:
+            print("   · Calibración cross-encoder (top_score 0-1): umbral → positivas que responden | negativas rechazadas")
+            for th in (0.02, 0.05, 0.1, 0.2, 0.3, 0.5, 0.7, 0.9):
+                print(f"       {th:>4.2f} → {pct(sum(1 for s in ps if s >= th) / len(ps)):>6} | "
+                      f"{pct(sum(1 for s in ns if s < th) / len(ns)):>6}")
+
+    ns_ = NORTH_STAR
+    print("\n   🎯 OBJETIVO: el agente responde bien lo que sabe y no inventa lo que no sabe, en tiempo acotado")
+    print(f"      metas: correctas ≥ {pct(ns_['correctas'])} · inventa ≤ {pct(ns_['inventa'])} · "
+          f"P95 recuperación ≤ {ns_['p95_ms']:.0f} ms   (IC95% sup. = peor caso plausible con {n_neg} negativas)")
+    flat = lambda s: " ".join(str(s).split())
+    for label, (pos, neg, e2e) in rows.items():
+        tag = "   ← producción" if label == prod else ""
+        if not e2e:
+            print(f"      {label:<16} P95 {p95_of[label]:.0f} ms (e2e solo con --live){tag}")
+            continue
+        c, i = e2e["c"], e2e["i"]
+        ok = c >= ns_["correctas"] and i <= ns_["inventa"] and p95_of[label] <= ns_["p95_ms"]
+        print(f"      {label:<16} correctas {pct(c)} {'✓' if c >= ns_['correctas'] else '✗'} · inventa {pct(i)} "
+              f"{'✓' if i <= ns_['inventa'] else '✗'} (≤{pct(e2e['i_hi'])}) · P95 {p95_of[label]:.0f} ms "
+              f"{'✓' if p95_of[label] <= ns_['p95_ms'] else '✗'}   {'CUMPLE' if ok else ''}{tag}")
+    for label, (pos, neg, e2e) in rows.items():
+        if not e2e:
+            continue
+        bad_p = [it for it in pos if not it.get("ok")]
+        bad_n = [it for it in neg if it.get("inv") is not False]
+        print(f"\n   [{label}] positivas mal respondidas: {len(bad_p)}/{len(pos)}")
+        for it in bad_p[:8]:
+            print(f"     [{it['grp'][:5]}|{it['tipo'][:4]}|{state(it['r'])}] «{it['q'][:52]}» → «{flat(it['a'])[:110]}»")
+        print(f"   [{label}] negativas donde el agente inventa (auditar a mano): {len(bad_n)}/{len(neg)}")
+        for it in bad_n[:20]:
+            print(f"     [{it['grp'][:5]}|{state(it['r'])}] «{it['q'][:52]}» → «{flat(it['a'])[:140]}»")
+
+    if prod in rows and rows[prod][2]:
+        pos, neg, e2e = rows[prod]
+        c, i = e2e["c"], e2e["i"]
+        R.add(S, "OBJETIVO · respuestas correctas del agente (corpus denso)", c >= ns_["correctas"], pct(c),
+              f"≥ {pct(ns_['correctas'])}", "alto", "rerank.py · RERANK_MODE / ltm/retrieval.py",
+              f"Configuración de producción: {prod}.",
+              [f"«{it['q'][:60]}» → «{flat(it['a'])[:60]}»" for it in pos if not it.get("ok")][:4])
+        R.add(S, "OBJETIVO · invenciones ante preguntas sin respuesta cercanas", i <= ns_["inventa"],
+              f"{pct(i)} (≤{pct(e2e['i_hi'])})", f"≤ {pct(ns_['inventa'])}", "alto",
+              "rerank.py · RERANK_NONE / ltm/retrieval.py", f"Configuración de producción: {prod}.",
+              [f"«{it['q'][:60]}» → «{flat(it['a'])[:60]}»" for it in neg if it.get("inv") is not False][:4])
+        R.add(S, "OBJETIVO · latencia P95 de recuperación", p95_of[prod] <= ns_["p95_ms"], f"{p95_of[prod]:.0f} ms",
+              f"≤ {ns_['p95_ms']:.0f} ms", "medio", "rerank.py")
+
+
+# ---------------------------------------------------------------- escala  [PARCHE6]
+# «Memoria infinita»: el objetivo debe mantenerse cuando la memoria crece. Se añaden hechos de RELLENO
+# realistas y difíciles: datos de TERCERAS personas (vecinos, compañeros...) con los mismos atributos que el
+# usuario (mascota, ciudad, alergias, medicación, jefe, grupo sanguíneo...) e información local inventada.
+# Ningún relleno responde a una pregunta del benchmark: nunca hablan del usuario ni de su familia, y los
+# fármacos usados no responden a ninguna negativa.
+_ESC_M = ["Tomás", "Javier", "Sergio", "Hugo", "Iván", "Óscar", "Raúl", "Marcos", "Adrián", "Gonzalo", "Héctor",
+          "Ismael", "Jorge", "Luis", "Mario", "Nicolás", "Pablo", "Quique", "Samuel", "Víctor", "Álvaro", "Bruno",
+          "César", "Diego", "Emilio", "Fermín", "Gabriel", "Jaime"]
+_ESC_F = ["Marta", "Elena", "Sara", "Paula", "Irene", "Nuria", "Rosa", "Silvia", "Beatriz", "Cristina", "Diana",
+          "Eva", "Fátima", "Gloria", "Inés", "Julia", "Laura", "Mónica", "Noelia", "Olga", "Pilar", "Raquel",
+          "Sonia", "Teresa", "Verónica", "Ana", "Clara", "Lorena"]
+_ESC_REL = [("El vecino", "La vecina"), ("El compañero de trabajo", "La compañera de trabajo"),
+            ("El amigo de la infancia", "La amiga de la infancia"), ("El compañero del gimnasio", "La compañera del gimnasio"),
+            ("El profesor de yoga", "La profesora de yoga"), ("El socio del club de lectura", "La socia del club de lectura")]
+_ESC_CITY = ["Lugo", "Soria", "Teruel", "Cáceres", "Huesca", "Palencia", "Segovia", "Ávila", "Cuenca", "Jaén", "Ourense",
+             "Logroño", "Gijón", "Vigo", "Murcia", "Alicante", "Córdoba", "Granada", "Burgos", "Oviedo"]
+_ESC_BARRIO = ["San Lázaro", "El Ejido", "La Chantría", "Santa Ana", "El Ensanche", "La Florida", "Los Pinos", "El Puerto"]
+_ESC_PET = [("perro", ["Rocky", "Toby", "Lur", "Nala", "Coco", "Simba"]), ("gato", ["Mishi", "Garfield", "Luna", "Pelusa"]),
+            ("loro", ["Pepe", "Kiwi"]), ("conejo", ["Tambor", "Copito"])]
+_ESC_JOB = [("fontanero", "fontanera"), ("arquitecto", "arquitecta"), ("profesor de historia", "profesora de historia"),
+            ("farmacéutico", "farmacéutica"), ("conductor de autobús", "conductora de autobús"), ("abogado", "abogada"),
+            ("cocinero", "cocinera"), ("electricista", "electricista"), ("periodista", "periodista"), ("veterinario", "veterinaria")]
+_ESC_ALLERG = ["el polen", "los ácaros", "el marisco", "los frutos secos", "el látex", "las picaduras de abeja"]
+_ESC_INSTR = ["el piano", "el violín", "la batería", "el saxofón", "la gaita", "el ukelele"]
+_ESC_MONTH = ["enero", "febrero", "marzo", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre",
+              "diciembre"]
+_ESC_CAR = ["Seat Ibiza", "Renault Clio", "Ford Focus", "Kia Ceed", "Peugeot 308", "Dacia Sandero"]
+_ESC_COLOR = ["rojo", "azul", "blanco", "negro", "verde"]
+_ESC_DEGREE = ["Derecho", "Medicina", "Historia", "Biología", "Arquitectura", "Económicas", "Magisterio"]
+_ESC_BLOOD = ["A+", "A−", "B+", "0+", "0−", "AB+"]
+_ESC_DRUG = ["omeprazol", "levotiroxina", "paracetamol", "amlodipino", "losartán"]
+_ESC_COND = ["asma", "migraña", "artrosis de rodilla", "hipotiroidismo", "rinitis alérgica"]
+_ESC_SPORT = ["pádel", "natación", "ciclismo", "escalada", "baloncesto"]
+_ESC_FOOD = ["el pepino", "la coliflor", "las aceitunas", "el queso azul", "las alcachofas"]
+_ESC_COUNTRY = ["Portugal", "Italia", "Grecia", "Marruecos", "Islandia", "Japón", "Escocia"]
+_ESC_SYL = ["val", "mor", "tre", "ana", "cas", "lin", "dor", "ve", "ra", "sel", "bu", "qui", "nal", "to", "ria"]
+
+
+def _escala_distractors(n: int, seed: int = 7) -> list[str]:
+    import random as _random
+    rnd = _random.Random(seed)
+    out: list[str] = []
+    seen: set[str] = set()
+    for _ in range(n * 20):
+        if len(out) >= n:
+            break
+        fem = rnd.random() < 0.5
+        name = rnd.choice(_ESC_F if fem else _ESC_M)
+        s = f"{rnd.choice(_ESC_REL)[1 if fem else 0]} {name}"
+        o = "a" if fem else "o"
+        pet, petnames = rnd.choice(_ESC_PET)
+        place = "".join(rnd.choice(_ESC_SYL) for _ in range(3)).capitalize()
+        k = rnd.randrange(22)
+        t = [
+            f"{s} tiene un {pet} llamado {rnd.choice(petnames)}.",
+            f"{s} vive en {rnd.choice(_ESC_CITY)}, en el barrio de {rnd.choice(_ESC_BARRIO)}.",
+            f"{s} nació en {rnd.choice(_ESC_CITY)} en {rnd.randint(1950, 2005)}.",
+            f"{s} trabaja como {rnd.choice(_ESC_JOB)[1 if fem else 0]} en {rnd.choice(_ESC_CITY)}.",
+            f"{s} es alérgic{o} " + (lambda x: "al " + x[3:] if x.startswith("el ") else "a " + x)(rnd.choice(_ESC_ALLERG)) + ".",
+            f"{s} toca {rnd.choice(_ESC_INSTR)} desde hace {rnd.randint(2, 30)} años.",
+            f"El cumpleaños de {name} es el {rnd.randint(1, 28)} de {rnd.choice(_ESC_MONTH)}.",
+            f"{s} conduce un {rnd.choice(_ESC_CAR)} de color {rnd.choice(_ESC_COLOR)}.",
+            f"{s} estudió {rnd.choice(_ESC_DEGREE)} en la Universidad de {rnd.choice(_ESC_CITY)}.",
+            f"La hija de {name} se llama {rnd.choice(_ESC_F)}.",
+            f"El hijo de {name} se llama {rnd.choice(_ESC_M)}.",
+            f"La suegra de {name} se llama {rnd.choice(_ESC_F)}.",
+            f"El jefe de {name} se llama {rnd.choice(_ESC_M)}.",
+            f"El grupo sanguíneo de {name} es {rnd.choice(_ESC_BLOOD)}.",
+            f"{s} toma {rnd.choice(_ESC_DRUG)} desde {rnd.randint(2005, 2025)}.",
+            f"{s} tiene {rnd.choice(_ESC_COND)}.",
+            f"{s} practica {rnd.choice(_ESC_SPORT)} los fines de semana.",
+            f"A {name} no le gusta {rnd.choice(_ESC_FOOD)}.",
+            f"{s} viajó a {rnd.choice(_ESC_COUNTRY)} de vacaciones en {rnd.randint(2010, 2025)}.",
+            f"El pueblo de {place} celebra su fiesta mayor el {rnd.randint(1, 28)} de {rnd.choice(_ESC_MONTH)}.",
+            f"El embalse de {place} tiene una capacidad de {rnd.randint(5, 900)} hectómetros cúbicos.",
+            f"La ermita de {place} se construyó en el siglo {rnd.choice(['XII', 'XIII', 'XIV', 'XV', 'XVI', 'XVII'])}.",
+        ][k]
+        if t not in seen:
+            seen.add(t)
+            out.append(t)
+    return out
+
+
+def _escala_insert(tree: Any, texts: list[str], tag: str) -> float:
+    # inserción masiva (sin colocación con LLM: aquí se mide la RECUPERACIÓN a escala, no la ontología)
+    t0 = time.time()
+    root = tree._make_node(None, {"name": "Terceros y miscelánea", "description": "Relleno del benchmark de escala"}, 0)
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    rows = [(f"esc-{tag}-{i:06d}", root, t, 5.0, "dato", "benchmark-escala", now, tree.tick, tree.tick)
+            for i, t in enumerate(texts)]
+    with tree.lock:
+        cur = tree.conn.cursor()
+        cur.executemany("INSERT INTO cells (id, node_id, text, importance, kind, fuente, ingest_timestamp, "
+                        "created_tick, updated_tick) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+        cur.execute("UPDATE nodes SET celulas = (SELECT COUNT(*) FROM cells WHERE node_id = ? AND archived = 0) "
+                    "WHERE id = ?", (root, root))
+        tree.conn.commit()
+    emb = getattr(tree, "emb", None)
+    if emb is not None:
+        print("   … vectorizando", end="", flush=True)
+        for i in range(400):
+            r = emb.sync(limit=512)
+            if "al día" in r or "no disponible" in r or "no respondió" in r:
+                break
+            if i % 4 == 0:
+                print(".", end="", flush=True)
+        print(" listo")
+    return time.time() - t0
+
+
+ESC_POS_JUDGE = ("Eres un evaluador. Se hizo una pregunta a un asistente con memoria y existe un DATO CORRECTO que la "
+                 "responde. Decide si la respuesta contiene ese dato (aunque use otras palabras o añada información "
+                 "adicional correcta) y no lo contradice. Si dice que no lo sabe, o da como respuesta principal un dato "
+                 "distinto, es incorrecta.\n"
+                 'Devuelve SOLO JSON: {"correcta": true} o {"correcta": false}.')
+# [PARCHE7] criterio VERIFICABLE: no «¿inventa?» (difuso) sino «¿afirma un valor concreto para lo preguntado?».
+# Como estas preguntas NO tienen respuesta en la memoria, afirmar un valor personal = inventar.
+ESC_NEG_JUDGE = ("Eres un evaluador. Se hizo a un asistente una pregunta sobre un dato concreto. Decide si la respuesta "
+                 "AFIRMA un valor concreto como respuesta a ESA pregunta (un nombre, un lugar, una cifra, una fecha, un "
+                 "objeto, un fármaco...) o si, por el contrario, dice que ese dato no consta o que no lo sabe.\n"
+                 "Mencionar otros datos del mismo sujeto, o datos de otras personas, NO es afirmar un valor para lo "
+                 "preguntado. Solo importa si responde a la pregunta con un valor.\n"
+                 'Devuelve SOLO JSON: {"afirma": true} o {"afirma": false}.')
+
+
+def suite_escala(ctx: Ctx) -> None:
+    # [PARCHE7] métricas que SÍ dependen de la memoria + juez verificable + referencia sin memoria + motor vectorial
+    # [PARCHE8] por defecto 10.000 y 100.000 hechos de relleno, e2e en el máximo y consulta tras añadir 1 hecho
+    R, S = ctx.report, "escala"
+    tree, id_of, qs = _hard_corpus(ctx)
+    levels = [int(x) for x in os.getenv("HMEM_ESCALA", "10000,100000").split(",") if x.strip()]
+    e2e_at = os.getenv("HMEM_ESCALA_E2E", "max").replace("max", str(max(levels) if levels else 0))
+    e2e_levels = {int(x) for x in e2e_at.split(",") if x.strip()}
+    pmode = str(getattr(C, "RERANK_MODE", "off")).strip().lower()
+    ppol = "abstiene" if str(getattr(C, "RERANK_NONE", "tentative")).strip().lower() == "abstain" else "tentativa"
+    prod = f"{pmode}·{ppol}" if pmode in ("llm", "cross") else "off"
+    configs: list[tuple[str, dict[str, Any]]] = [("off", {"RERANK_MODE": "off"}),
+                                                 ("llm·tentativa", {"RERANK_MODE": "llm", "RERANK_NONE": "tentative"})]
+    if prod not in [c[0] for c in configs]:
+        configs.append((prod, {"RERANK_MODE": pmode, "RERANK_NONE": "abstain" if ppol == "abstiene" else "tentative"}))
+    gold_txt = cell_texts(tree, list(id_of.values()))
+    base_n = int(dbq(tree, "SELECT COUNT(*) FROM cells WHERE archived = 0")[0][0])
+    backend = "numpy" if getattr(vectores, "np", None) is not None else "Python puro (lento: pip install numpy)"
+    print(f"   producción: «{prod}» · relleno: {levels} · e2e en: {sorted(e2e_levels)} · base: {base_n} hechos · "
+          f"motor vectorial: {backend}")
+    chat = None
+    if ctx.live:
+        from llm import LLM
+        from agente import Agent
+        chat = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
+    workers = max(1, int(os.getenv("HMEM_E2E_WORKERS", "2")))
+    neg_group = lambda q: "personal" if ("usuario" in q or "Alicia" in q) else "conocimiento"
+    state = lambda r: "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme")
+    flat = lambda s: " ".join(str(s).split())
+    n_pers = sum(1 for q in HARD_NEGATIVES if neg_group(q) == "personal")
+    n_user = sum(1 for _q, _f, _t, g in qs if g == "Usuario")
+
+    def run(label: str, over: dict[str, Any]) -> tuple[list[dict], list[dict]]:
+        pos: list[dict] = []
+        neg: list[dict] = []
+        print(f"   … {label}: recuperando", end="", flush=True)
+        with _cfg_override(**over):
+            for q, fi, tipo, grp in qs:
+                t0 = time.perf_counter()
+                r = tree.recall(q, reinforce=False, synthesize=False)
+                cands = list(r.get("candidates") or [])
+                gold = id_of[fi]
+                pos.append({"q": q, "fi": fi, "tipo": tipo, "grp": grp, "r": r,
+                            "ms": (time.perf_counter() - t0) * 1000,
+                            "rank": cands.index(gold) + 1 if gold in cands else None})
+            for q in HARD_NEGATIVES:
+                t0 = time.perf_counter()
+                r = tree.recall(q, reinforce=False, synthesize=False)
+                neg.append({"q": q, "grp": neg_group(q), "r": r, "ms": (time.perf_counter() - t0) * 1000})
+        print(" listo")
+        return pos, neg
+
+    def answer(it: dict) -> str:
+        r = it["r"]
+        found, tent, ans = bool(r.get("found")), bool(r.get("tentative")), str(r.get("answer") or "")
+        ltm = {"found": found, "tentative": tent, "sources": [],
+               "answer": "" if tent else (ans if found else ""), "tentative_answer": ans if (found and tent) else ""}
+        try:
+            return chat.chat([{"role": "system", "content": Agent._build_system(None, {}, ltm, None)},
+                              {"role": "user", "content": it["q"]}], max_tokens=350, temperature=0.2)
+        except Exception as exc:
+            return f"[error LLM: {type(exc).__name__}]"
+
+    def judge(system: str, user: str, key: str) -> bool | None:
+        try:
+            obj = chat.ask_json(system, user)
+            return bool(obj.get(key)) if isinstance(obj, dict) and key in obj else None
+        except Exception:
+            return None
+
+    def vote(system: str, user: str, key: str) -> bool | None:
+        v1, v2 = judge(system, user, key), judge(system, user, key)
+        if v1 is not None and v1 == v2:
+            return v1
+        votes = [v for v in (v1, v2, judge(system, user, key)) if v is not None]
+        return (2 * sum(votes) > len(votes)) if votes else None
+
+    def judge_pos(it: dict) -> bool | None:
+        return vote(ESC_POS_JUDGE, f"Pregunta: {it['q']}\nDato correcto: {gold_txt.get(id_of[it['fi']], '')}\n"
+                                   f"Respuesta del asistente: {it['a']}", "correcta")
+
+    def judge_neg(it: dict) -> bool | None:
+        return vote(ESC_NEG_JUDGE, f"Pregunta: {it['q']}\nRespuesta del asistente: {it['a']}", "afirma")
+
+    def e2e(pos: list[dict], neg: list[dict], label: str) -> dict[str, Any]:
+        print(f"   … {label}: agente real + juez ({workers} en paralelo)", end="", flush=True)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            for it, a in zip(pos + neg, ex.map(answer, pos + neg)):
+                it["a"] = a
+            for it, v in zip(pos, ex.map(judge_pos, pos)):
+                it["ok"] = v
+            for it, v in zip(neg, ex.map(judge_neg, neg)):
+                it["afirma"] = v
+        print(" listo")
+        user = [it for it in pos if it["grp"] == "Usuario"]
+        pers = [it for it in neg if it["grp"] == "personal"]
+        know = [it for it in neg if it["grp"] == "conocimiento"]
+        n_inv = sum(1 for it in pers if it["afirma"] is not False)     # sin veredicto = inventa
+        return {"c": sum(1 for it in pos if it["ok"]) / len(pos),
+                "cu": sum(1 for it in user if it["ok"]) / max(1, len(user)),
+                "i": n_inv / max(1, len(pers)), "i_hi": _wilson(n_inv, len(pers))[1], "n_inv": n_inv,
+                "kn": sum(1 for it in know if it["afirma"]), "n_kn": len(know)}
+
+    table: list[dict[str, Any]] = []
+    detail: dict[tuple[int, str], tuple[list[dict], list[dict]]] = {}
+    added = 0
+    for lvl in [0] + levels:
+        if lvl > added:
+            extra = _escala_distractors(lvl, seed=7)[added:lvl]
+            secs = _escala_insert(tree, extra, f"{lvl}")
+            print(f"   + {len(extra)} hechos de relleno insertados ({secs:.0f}s)")
+            added = lvl
+        n_mem = int(dbq(tree, "SELECT COUNT(*) FROM cells WHERE archived = 0")[0][0])
+        print(f"\n   ── NIVEL +{lvl}: {n_mem} hechos en memoria ──")
+        if ctx.live and lvl == 0 and 0 in e2e_levels:
+            # referencia SIN memoria: cuánto acierta el LLM solo con su conocimiento (mide qué preguntas dependen de la memoria)
+            pos = [{"q": q, "fi": fi, "tipo": t, "grp": g, "r": {"found": False}, "ms": 0.0, "rank": None}
+                   for q, fi, t, g in qs]
+            neg = [{"q": q, "grp": neg_group(q), "r": {"found": False}, "ms": 0.0} for q in HARD_NEGATIVES]
+            table.append({"lvl": 0, "n": 0, "cfg": "sin memoria", "h1": None, "r6": None, "r18": None, "negf": None,
+                          "p95": 0.0, "e2e": e2e(pos, neg, "sin memoria")})
+            detail[(0, "sin memoria")] = (pos, neg)
+        for label, over in configs:
+            pos, neg = run(label, over)
+            row: dict[str, Any] = {"lvl": lvl, "n": n_mem, "cfg": label,
+                                   "h1": sum(1 for it in pos if it["rank"] == 1) / len(pos),
+                                   "r6": sum(1 for it in pos if it["rank"] and it["rank"] <= 6) / len(pos),
+                                   "r18": sum(1 for it in pos if it["rank"]) / len(pos),
+                                   "negf": sum(1 for it in neg if state(it["r"]) == "firme"),
+                                   "p95": percentile([it["ms"] for it in pos + neg], 95), "e2e": None}
+            if ctx.live and lvl in e2e_levels:
+                row["e2e"] = e2e(pos, neg, label)
+                detail[(lvl, label)] = (pos, neg)
+            table.append(row)
+
+    ns_ = NORTH_STAR
+    print(f"\n   ESCALA  ({len(qs)} positivas, {n_user} de ellas del usuario · {len(HARD_NEGATIVES)} negativas: "
+          f"{n_pers} personales + {len(HARD_NEGATIVES) - n_pers} de conocimiento general)")
+    print(f"   {'relleno':>8}{'hechos':>8}  {'configuración':<15}{'Hit@1':>7}{'R@6':>7}{'R@18':>7}{'P95ms':>7}   "
+          f"{'correctas':>9}{'usuario':>9}   inventa (personales, IC95% sup.) · conoc.general respondidas")
+    for row in table:
+        e = row["e2e"]
+        ret = (f"{pct(row['h1']):>7}{pct(row['r6']):>7}{pct(row['r18']):>7}{row['p95']:>7.0f}" if row["h1"] is not None
+               else f"{'—':>7}{'—':>7}{'—':>7}{'—':>7}")
+        e2e_s = (f"{pct(e['c']):>9}{pct(e['cu']):>9}   {e['n_inv']}/{n_pers} = {pct(e['i'])} (≤{pct(e['i_hi'])}) · "
+                 f"{e['kn']}/{e['n_kn']}" if e else f"{'—':>9}{'—':>9}")
+        tag = "  ← producción" if row["cfg"] == prod else ""
+        print(f"   {'+' + str(row['lvl']):>8}{row['n']:>8}  {row['cfg']:<15}{ret}   {e2e_s}{tag}")
+        if row["h1"] is not None:
+            R.add(S, f"Hit@1 · +{row['lvl']} · {row['cfg']}", True, pct(row["h1"]), "(observación)", "info", "escala")
+            R.add(S, f"P95 · +{row['lvl']} · {row['cfg']}", True, f"{row['p95']:.0f} ms", "(observación)", "info", "escala")
+        if e:
+            R.add(S, f"e2e correctas / usuario / inventa · +{row['lvl']} · {row['cfg']}", True,
+                  f"{pct(e['c'])} / {pct(e['cu'])} / {pct(e['i'])}", "(observación)", "info", "escala")
+    print("   (usuario = correctas en las preguntas sobre el usuario, las únicas que exigen memoria · inventa = afirma un "
+          "valor para un dato personal que NO consta · conoc.general = negativas de conocimiento general que el LLM "
+          "responde con lo que sabe: no es inventar)")
+
+    for (lvl, label), (pos, neg) in sorted(detail.items()):
+        bad_p = [it for it in pos if not it.get("ok") and (label != "sin memoria" or it["grp"] == "Usuario")]
+        bad_n = [it for it in neg if it["grp"] == "personal" and it.get("afirma") is not False]
+        if label == "sin memoria":
+            print(f"\n   [sin memoria] preguntas del usuario acertadas sin memoria: "
+                  f"{sum(1 for it in pos if it['grp'] == 'Usuario' and it.get('ok'))}/{n_user} (deberían ser ~0)")
+            continue
+        print(f"\n   [+{lvl} · {label}] positivas mal respondidas: {len(bad_p)}/{len(pos)} · "
+              f"afirma un dato personal que no consta: {len(bad_n)}/{n_pers}")
+        for it in bad_p[:6]:
+            print(f"     ✗pos [{it['grp'][:5]}|{it['tipo'][:4]}|{state(it['r'])}|rank={it['rank']}] «{it['q'][:48]}» → "
+                  f"«{flat(it['a'])[:100]}»")
+        for it in bad_n[:10]:
+            print(f"     ✗neg [{state(it['r'])}] «{it['q'][:48]}» → «{flat(it['a'])[:120]}»")
+
+    lat_rows = [r for r in table if r["cfg"] == prod and r["h1"] is not None]
+    if len(lat_rows) >= 2:
+        f_l, l_l = lat_rows[0], lat_rows[-1]
+        ms_per_k = (l_l["p95"] - f_l["p95"]) / max(1.0, (l_l["n"] - f_l["n"]) / 1000)
+        print(f"\n   latencia ({prod}): {f_l['p95']:.0f} ms con {f_l['n']} hechos → {l_l['p95']:.0f} ms con {l_l['n']} "
+              f"(+{ms_per_k:.1f} ms por cada 1.000) · proyección a 1.000.000 de hechos ≈ "
+              f"{l_l['p95'] + ms_per_k * (1000000 - l_l['n']) / 1000:.0f} ms · motor vectorial: {backend}")
+
+    # aprendizaje continuo: la PRIMERA consulta tras añadir un hecho no debe pagar la reconstrucción de todo el índice
+    if getattr(tree, "emb", None) is not None:
+        nuevo = "El vecino Telmo tiene un hurón llamado Chispa."
+        _escala_insert(tree, [nuevo], "nuevo")
+        times, top = [], ""
+        with _cfg_override(RERANK_MODE="off"):
+            for _ in range(2):
+                t0 = time.perf_counter()
+                r = tree.recall("¿Cómo se llama el hurón del vecino Telmo?", reinforce=False, synthesize=False)
+                times.append((time.perf_counter() - t0) * 1000)
+                top = cell_texts(tree, (r.get("candidates") or [])[:1]).get((r.get("candidates") or [""])[0], "")
+        n_now = int(dbq(tree, "SELECT COUNT(*) FROM cells WHERE archived = 0")[0][0])
+        print(f"   aprendizaje continuo ({n_now} hechos): 1.ª consulta tras añadir 1 hecho {times[0]:.0f} ms · "
+              f"2.ª {times[1]:.0f} ms · top-1: «{top[:50]}»")
+        R.add(S, f"Consulta tras añadir 1 hecho ({n_now} hechos)", times[0] <= NORTH_STAR["p95_ms"] and nuevo in top,
+              f"{times[0]:.0f} ms", f"≤ {NORTH_STAR['p95_ms']:.0f} ms y lo encuentra", "medio",
+              "vectores.py · VectorStore._matrix (caché incremental)",
+              "Si tarda mucho más que la 2.ª consulta, cada hecho nuevo reconstruye el índice entero.")
+
+    prod_rows = [r for r in table if r["cfg"] == prod and r["e2e"]]
+    if prod_rows:
+        first, last = prod_rows[0], prod_rows[-1]
+        e = last["e2e"]
+        print(f"\n   🎯 OBJETIVO A ESCALA ({prod}, {last['n']} hechos = ×{last['n'] / max(1, base_n):.0f} la base): "
+              f"correctas {pct(e['c'])} · del usuario {pct(e['cu'])} · inventa {pct(e['i'])} · P95 {last['p95']:.0f} ms")
+        if first is not last:
+            print(f"      degradación desde el primer nivel medido: usuario {100 * (e['cu'] - first['e2e']['cu']):+.1f} pp · "
+                  f"inventa {100 * (e['i'] - first['e2e']['i']):+.1f} pp · Hit@1 {100 * (last['h1'] - first['h1']):+.1f} pp")
+        R.add(S, f"OBJETIVO a escala · correctas ({last['n']} hechos)", e["c"] >= ns_["correctas"], pct(e["c"]),
+              f"≥ {pct(ns_['correctas'])}", "alto", "rerank.py / ltm/retrieval.py", f"Producción: {prod}.")
+        R.add(S, f"OBJETIVO a escala · correctas del usuario ({last['n']} hechos)", e["cu"] >= ns_["correctas"],
+              pct(e["cu"]), f"≥ {pct(ns_['correctas'])}", "alto", "rerank.py / ltm/retrieval.py",
+              "Las únicas preguntas que el LLM no puede responder sin memoria.")
+        R.add(S, f"OBJETIVO a escala · invenciones personales ({last['n']} hechos)", e["i"] <= ns_["inventa"],
+              f"{pct(e['i'])} (≤{pct(e['i_hi'])})", f"≤ {pct(ns_['inventa'])}", "alto", "rerank.py / agente.py")
+        R.add(S, f"OBJETIVO a escala · latencia P95 ({last['n']} hechos)", last["p95"] <= ns_["p95_ms"],
+              f"{last['p95']:.0f} ms", f"≤ {ns_['p95_ms']:.0f} ms", "medio", "vectores.py / rerank.py")
+    if not ctx.live:
+        print("   ⚠ modo emulado: valida la fontanería; las cifras solo son informativas con --live")
+
+
 SUITES: list[tuple[str, str, Callable[[Ctx], None]]] = [
     ("ablacion", "Ablación de canales con intervalos y split dev/test", suite_ablacion),
     ("diagnostico", "Diagnóstico: candidatos, discordancias y abstención", suite_diagnostico),
     ("identificadores", "Consultas de palabra clave e identificadores", suite_identificadores),
+    ("abstencion", "Abstención: tasa de respuesta vs rechazo", suite_abstencion),
+    ("e2e_abstencion", "Abstención extremo a extremo con el LLM real", suite_e2e_abstencion),
     ("recuperacion", "Recuperación, fusión RRF y ranking (108 preguntas)", suite_recuperacion),
+    ("dificil", "Corpus denso del mismo dominio: riñón, fármacos y datos personales", suite_dificil),  # [PARCHE3]
+    ("reranker", "Reranker y OBJETIVO extremo a extremo (corpus denso)", suite_reranker),  # [PARCHE4]
+    ("escala", "OBJETIVO a escala: corpus denso + miles de hechos de relleno", suite_escala),  # [PARCHE6]
     ("temporal", "Reconciliación temporal (hechos vigentes vs obsoletos)", suite_temporal),
     ("olvido", "Curva de olvido y resurrección", suite_olvido),
     ("sinapsis", "Sinapsis hebbianas y activación propagada", suite_sinapsis),
@@ -1589,10 +2805,13 @@ def final_report(ctx: Ctx, report: Report, args: argparse.Namespace) -> int:
         print(f"  {mark}  {key:<13} {ok}/{len(scored)} comprobaciones puntuables   ({report.suite_time.get(key, 0):.1f}s)")
 
     sc = report.score()
-    verdict = ("SÓLIDO — evidencia suficiente" if sc >= 9 else
-               "ACEPTABLE CON RESERVAS" if sc >= 7.5 else
-               "DÉBIL — hay defectos que corregir" if sc >= 6 else "INSUFICIENTE")
-    print(f"\n  PUNTUACIÓN PONDERADA: {sc:.1f} / 10  →  {verdict}")
+    if not any(c.severity != "info" for c in report.checks):   # [PARCHE2]
+        print("\n  PUNTUACIÓN PONDERADA: —  →  SIN COMPROBACIONES PUNTUABLES (solo observaciones)")
+    else:
+        verdict = ("SÓLIDO — evidencia suficiente" if sc >= 9 else
+                   "ACEPTABLE CON RESERVAS" if sc >= 7.5 else
+                   "DÉBIL — hay defectos que corregir" if sc >= 6 else "INSUFICIENTE")
+        print(f"\n  PUNTUACIÓN PONDERADA: {sc:.1f} / 10  →  {verdict}")
     print(f"  (pesos: crítico×3, alto×2, medio×1; las 'observaciones' no puntúan)  · modo: "
           f"{'REAL (--live)' if ctx.live else 'EMULADO (valida lógica, no calidad semántica)'}")
 

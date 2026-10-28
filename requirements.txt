@@ -1,1 +1,3 @@
-# Sin dependencias externas: solo la librería estándar de Python 3.10+.
+# Sin dependencias obligatorias: solo la librería estándar de Python 3.10+.
+# MUY RECOMENDADO para memorias grandes (búsqueda vectorial ~50× más rápida):  [PARCHE9]
+#   pip install numpy        (o: pip install -e .[fast])

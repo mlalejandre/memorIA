@@ -106,3 +106,4 @@ dist/
 *.pre_parche
 *.tmp
 # <<< hierarchical-memory (parche.py) <<<
+resultados_parches/

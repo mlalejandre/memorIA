@@ -22,6 +22,10 @@ try:
     import vectores as _vectores
 except ImportError:
     _vectores = None
+try:
+    import rerank as _rerank  # [PARCHE4]
+except ImportError:
+    _rerank = None
 
 
 class MemoryTree(DatabaseMixin, StorageMixin, RetrievalMixin, HomeostasisMixin, IngestionMixin, ExplorerMixin):
@@ -63,6 +67,13 @@ class MemoryTree(DatabaseMixin, StorageMixin, RetrievalMixin, HomeostasisMixin, 
                 self.emb = _vectores.EmbeddingService(self)
             except Exception:
                 self.emb = None
+
+        self.reranker = None  # [PARCHE4] activo solo si RERANK_MODE = llm | cross
+        if _rerank is not None:
+            try:
+                self.reranker = _rerank.Reranker(self)
+            except Exception:
+                self.reranker = None
 
         self._init_ingest_queue()
 

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hierarchical-memory"
-version = "0.2.0a1"
+version = "0.3.0a1"
 description = "Memoria jerárquica de largo plazo para LLMs locales (solo biblioteca estándar)."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,7 +30,7 @@ hmem-cli = "main:main"
 [tool.setuptools]
 package-dir = { "" = "src", "interfaz" = "interfaz" }
 packages = ["interfaz", "ltm"]
-py-modules = ["agente", "bucle", "cartuchos", "config", "corto_plazo", "episodica", "largo_plazo", "llm", "main", "navegacion", "servidor", "vectores"]
+py-modules = ["agente", "bucle", "cartuchos", "config", "corto_plazo", "episodica", "largo_plazo", "llm", "main", "navegacion", "rerank", "servidor", "vectores"]  # [PARCHE4]
 
 [tool.setuptools.package-data]
 interfaz = ["index.html"]

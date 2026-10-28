@@ -406,6 +406,8 @@ class CartridgeManager:
             f"Importado directamente desde base de datos SQLite ({fallback_name})",
         )
         target = self.root / created["id"]
+        for s in ("-wal", "-shm"):
+            (target / f"memoria.db{s}").unlink(missing_ok=True)
         (target / "memoria.db").write_bytes(raw_bytes)
         _problem = _schema_problem(target / "memoria.db")
         if _problem:
@@ -467,7 +469,8 @@ class CartridgeManager:
             desc = manifest.get("description", "Cartucho importado")
             created = self.create_cartridge(name, desc)
             target = self.root / created["id"]
-
+            for s in ("-wal", "-shm"):
+                (target / f"memoria.db{s}").unlink(missing_ok=True)
             shutil.copy2(db_file, target / "memoria.db")
             stm_file = tmp_p / "sesion.json"
             if stm_file.exists():

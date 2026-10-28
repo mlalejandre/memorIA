@@ -2,7 +2,7 @@
 
 > Hierarchical long-term memory for local LLMs: an adaptive-depth semantic tree (up to 7 levels) of nodes plus atomic "cells", an autonomous background maintenance loop, hybrid retrieval and per-fact provenance. **Python standard library only (`numpy` is optional).**
 >
-> ⚠️ **Status: alpha (v0.2.0a1).** It works and is tested, but it is a research project: see *Known limitations* below.
+> ⚠️ **Status: alpha (v0.3.0a1).** It works and is tested, but it is a research project: see *Known limitations* below.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -22,7 +22,7 @@ The agent keeps **two memories queried in parallel** on every message:
 - **Tree ontology.** Facts are filed in a tree of **adaptive depth** (1 to `MEM_MAX_DEPTH` levels, default 5; `task_split` can go down to 7), from general to specific concepts (the 7 conceptual levels `planeta ➜ país ➜ ciudad ➜ fábrica ➜ persona ➜ órgano ➜ tejido` are only a metaphor). Each fact is a **cell**: one atomic statement with source, importance and timestamps. Set `MEM_ADAPTIVE_DEPTH=0` for the legacy fixed 7-level layout.
 - **Sleep cycle.** While idle, a loop runs nine tasks in rotation: `repair` (counters, empty-branch pruning, FTS5 rebuild), `embed` (missing vectors), `decay` (archive low-importance cells, prune stale synapses), `describe` (LLM-written node summaries), `dedupe`, `selftest` (asks itself a question about a cell and checks it can be recalled), `reevaluate`, `split` (rebalance overloaded leaves) and `merge`.
 - **Forgetting that is reversible.** Archived cells are not deleted; they are restored automatically when a later query retrieves them.
-- **Hybrid retrieval.** Exact match + SQLite FTS5 (BM25); when both find nothing, the LLM proposes related keywords. Rankings are fused with Reciprocal Rank Fusion and the LLM answers *only* from the retrieved cells.
+- **Retrieval.** By default, cosine search over `bge-m3` embeddings (`RETRIEVAL_PROFILE=embeddings`, the best measured option). With `RETRIEVAL_PROFILE=completo`, exact match, SQLite FTS5 (BM25), LLM query expansion, tree navigation and synapses are fused with Reciprocal Rank Fusion; they also act as fallback when embeddings return nothing. A relevance gate decides whether memories are injected as facts, injected with a caution, or not at all, and an optional reranker (`RERANK_MODE=llm`) re-orders the top 8.
 - **Conversation → memory.** Facts in what the user says are extracted by the LLM into atomic statements and queued for storage in the background (`LTM_INGEST_USER`).
 - **Provenance.** Every cell keeps its source (book/paper detected from the header, or the timestamped conversation) and answers cite it.
 - **Local web console** at `http://127.0.0.1:8765` (UI in Spanish): chat, live pipeline, tree viewer, visual explorer/editor of the ontology, bulk ingestion of chapters/papers, diagnostics.
@@ -32,9 +32,33 @@ The agent keeps **two memories queried in parallel** on every message:
 
 - **Embeddings (optional, GPU 2).** A second `llama-server --embeddings` (bge-m3 by default, port `SERVER_PORT_GPU2`=8089) feeds a fifth RRF ranking for cells and episodes, nearest-neighbour placement in `store()` (0–4 LLM calls instead of 7), cheaper tree navigation and cosine-based dedupe. Vectors live in `memoria.db`; if the server is down everything works as before. `pip install numpy` (optional) speeds up the cosine search. Measure it with `python3 scripts/evaluar.py`.
 
+## 🎯 Objective and measured results (v0.3.0a1)
+
+The project is measured end to end against one objective: **the agent answers correctly what is in its memory, does not invent what is not, and keeps doing so as memory grows.**
+
+| Metric (real agent, LLM-judged) | Target | 108 facts | 100,108 facts (×927) |
+|---|---|---|---|
+| Correct on questions that require memory (40 user questions) | ≥ 95 % | 100 % | **100 %** |
+| Correct, all 112 questions | ≥ 95 % | 99.1 % | **99.1 %** |
+| Invents a personal fact that is not stored (31 near-miss questions) | ≤ 5 % | 0–3.2 % | **3.2 %** |
+| Retrieval latency P95 | ≤ 1.5 s | 108 ms | **156 ms** |
+| First query after learning a new fact | ≤ 1.5 s | — | **92 ms** |
+
+Measured on 2026-10-28 with `nail-35b` (answers and judge) and `bge-m3` embeddings, default configuration, numpy installed. Distractors are third-party facts with the same attributes as the user's (pets, cities, allergies, bosses, blood types...). Baseline: [`experiment/baseline_v0.3.json`](experiment/baseline_v0.3.json).
+
+```bash
+python3 benchmarks/prueba.py --live --only escala                            # ~40 min (vectorises 100,000 facts)
+HMEM_ESCALA="1000,10000" python3 benchmarks/prueba.py --live --only escala   # faster
+```
+
+What the measurements decided (details in [CHANGELOG](CHANGELOG.md)): embeddings-only retrieval beats the full hybrid fusion and is 2.7× faster; an LLM reranker improves ranking but not the objective, so it is off by default; uncertain memories are injected with an explicit caution.
+
+<!-- [PARCHE9] -->
 ## 🚀 Quick start
 
 Requirements: Python 3.10+ (SQLite with FTS5, bundled with all mainstream builds) and any OpenAI-compatible endpoint (llama-server, vLLM, Ollama...).
+
+**Strongly recommended:** `pip install numpy` (or `pip install -e .[fast]`). It stays optional, but without it vector search is pure Python and memory does not scale (≈ 27 ms per 1,000 facts, versus ≈ 0.5 ms with numpy).
 
 ```bash
 git clone https://github.com/mlalejandre/memorIA.git
@@ -126,6 +150,8 @@ Everything is an environment variable or a line in `.env` (see [`.env.example`](
 | `MEM_TAU` | `20` | forgetting time constant |
 | `MEM_RECALL_EXPAND` | `1` | LLM keyword expansion when FTS finds nothing |
 | `LTM_INGEST_USER` / `_ASSISTANT` | `1` / `0` | which messages are mined for facts |
+| `RETRIEVAL_PROFILE` | `embeddings` | `embeddings` = vector channel only (best measured); `completo` / `personalizado` = full RRF fusion using your `RRF_W_*` |
+| `RERANK_MODE` | `off` | `llm` = LLM judge re-orders the top 8 and decides relevance; `cross` = bge-reranker-v2-m3 via `llama-server --reranking` (`RERANK_URL`) |
 
 ## 📐 Forgetting curve
 
@@ -152,7 +178,17 @@ Benchmark with measurable goals (never touches your real memory; uses temporary 
 ```bash
 python3 benchmarks/prueba.py          # emulated LLM/embeddings: validates logic, not semantic quality
 python3 benchmarks/prueba.py --live   # real servers from .env
+python3 benchmarks/prueba.py --live --only escala   # the objective at 10k / 100k facts
 ```
+
+## ⚠️ Known limitations
+
+- The benchmark corpus is synthetic (56 dense facts, 112 questions, templated distractors) and was written while developing the system: results must be confirmed on real memories.
+- 31 personal near-miss questions are few: 3.2 % is a single answer and its 95 % confidence interval reaches ≈ 16 %.
+- The scale test bulk-inserts distractors and bypasses `store()` (LLM placement, dedupe, temporal supersession): ingestion throughput and the sleep cycle at 100k facts are untested.
+- The judge is the same LLM that answers.
+- Temporal reconciliation (current vs superseded facts) passes 3/6 present-tense checks in emulated mode, as in 0.2.0a1.
+- Remaining known error: "the younger daughter" can be answered with the older daughter's name.
 
 ## 📄 License
 

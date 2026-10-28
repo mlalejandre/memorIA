@@ -159,18 +159,22 @@ class RetrievalMixin:
         except Exception:
             return []
 
-    def _is_relevant_result(self, question: str, candidates: list[dict[str, Any]],
-                            sim_of: dict[str, float], exact_hits: list[dict[str, Any]]) -> bool:
-        """Compuerta de relevancia escalonada por evidencia léxica y semántica."""
+    def _classify_relevance(self, question: str, candidates: list[dict[str, Any]],
+                            sim_of: dict[str, float], exact_hits: list[dict[str, Any]]) -> tuple[bool, bool]:
+        """Clasifica la relevancia en dos niveles: (found, tentative).
+        - (True, False): Alta certeza (exacta, buen solapamiento o sim >= EMB_ABSTAIN_SIM).
+        - (True, True): Banda tentativa (sim >= EMB_TENTATIVE_SIM; se inyecta con aviso de precaución).
+        - (False, False): Ruido / abstención total (debajo de la banda de ruido).
+        """
         if not candidates:
-            return False
+            return False, False
         top = candidates[0]
         top_id = str(top["id"])
         top_sim = sim_of.get(top_id, float(top.get("sim") or 0.0))
 
         # 1. Coincidencia exacta literal de subcadena
         if exact_hits and any(str(c["id"]) == top_id for c in exact_hits):
-            return True
+            return True, False
 
         q_stems = {self._qstem(t) for t in self._fts_terms(question)}
         c_stems = {self._qstem(t) for t in self._fts_terms(top.get("text", ""))}
@@ -179,52 +183,32 @@ class RetrievalMixin:
         emb = getattr(self, "emb", None)
         emb_active = emb is not None and emb.available()
         if not emb_active:
-            return overlap >= 1
+            return (overlap >= 1), False
 
-        # 2. Con embeddings activos: compuerta escalonada
-        # a) Fuerte solapamiento léxico (≥2 términos compartidos)
-        if overlap >= 2 and top_sim >= 0.35:
-            return True
-        # b) Solapamiento moderado (1 término de contenido relevante)
-        if overlap >= 1 and top_sim >= 0.48:
-            return True
-        # c) Cero solapamiento (paráfrasis pura / inferencia): exige alta confianza semántica (≥0.58)
-        # Esto rechaza preguntas sobre atributos inexistentes del usuario (gato, coche, wifi...) que flotan en 0.46-0.55
-        high_sim = max(0.58, float(getattr(_cfg, "EMB_ABSTAIN_SIM", 0.58)))
+        # 2. Criterios de alta certeza (Tier 1)
+        ov2_min = float(getattr(_cfg, "ABSTAIN_OV2_SIM", 0.35))
+        ov1_min = float(getattr(_cfg, "ABSTAIN_OV1_SIM", 0.48))
+        high_sim = float(getattr(_cfg, "EMB_ABSTAIN_SIM", 0.58))
+
+        if overlap >= 2 and top_sim >= ov2_min:
+            return True, False
+        if overlap >= 1 and top_sim >= ov1_min:
+            return True, False
         if overlap == 0 and top_sim >= high_sim:
-            return True
+            return True, False
 
-        return False
-        top = candidates[0]
-        top_id = str(top["id"])
-        top_sim = sim_of.get(top_id, float(top.get("sim") or 0.0))
+        # 3. Banda tentativa (Tier 2 / Modo C: 0.40 <= sim < 0.58)
+        tent_min = float(getattr(_cfg, "EMB_TENTATIVE_SIM", 0.40))
+        if top_sim >= tent_min:
+            return True, True
 
-        # 1. Coincidencia exacta de subcadena en el hecho
-        if exact_hits and any(str(c["id"]) == top_id for c in exact_hits):
-            return True
+        return False, False
 
-        q_stems = {self._qstem(t) for t in self._fts_terms(question)}
-        c_stems = {self._qstem(t) for t in self._fts_terms(top.get("text", ""))}
-        overlap = len(q_stems & c_stems)
-
-        emb = getattr(self, "emb", None)
-        emb_active = emb is not None and emb.available()
-        if not emb_active:
-            return overlap >= 1
-
-        min_abstain = float(getattr(_cfg, "EMB_ABSTAIN_SIM", 0.48))
-        # 2. Con embeddings activos:
-        # a) Alta similitud semántica (paráfrasis pura o inferencia conceptual sin solapamiento léxico)
-        if top_sim >= min_abstain:
-            return True
-        # b) Similitud moderada con al menos 1 término de contenido relevante compartido
-        if overlap >= 1 and top_sim >= 0.35:
-            return True
-        # c) Fuerte solapamiento léxico (≥2 términos compartidos)
-        if overlap >= 2:
-            return True
-
-        return False
+    def _is_relevant_result(self, question: str, candidates: list[dict[str, Any]],
+                            sim_of: dict[str, float], exact_hits: list[dict[str, Any]]) -> bool:
+        """Compatibilidad con métodos y suites anteriores."""
+        found, _ = self._classify_relevance(question, candidates, sim_of, exact_hits)
+        return found
 
     def recall(self, question: str, reinforce: bool = True, navigate: bool = True, synthesize: bool | None = None) -> dict[str, Any]:
         started_calls = self.llm.calls
@@ -238,12 +222,8 @@ class RetrievalMixin:
             return empty([])
 
         include_history = self._wants_history(question)
-        exact_hits = self._exact_search(question, include_history=include_history)
-        lexical_hits = self._fts_search(self._fts_terms(question), include_history=include_history)
-        rankings: dict[str, list[dict[str, Any]]] = {
-            "exacta": exact_hits,
-            "léxica-FTS5 (BM25)": lexical_hits,
-        }
+        # [PARCHE8] los canales con peso 0 NO se calculan: LIKE '%…%' y FTS5 recorren toda la memoria (O(N)) y su
+        # resultado se descartaba. Si los embeddings no devuelven nada, se calculan igualmente como respaldo.
         emb_hits: list[dict[str, Any]] = []
         syn_hits: list[dict[str, Any]] = []
         emb = getattr(self, "emb", None)
@@ -252,8 +232,17 @@ class RetrievalMixin:
                 emb_hits = emb.search_cells(question, include_history=include_history)
             except Exception:
                 emb_hits = []
-            if emb_hits:
-                rankings["embeddings (coseno)"] = emb_hits
+        need_exact = (not emb_hits) or rrf_weight("exacta") > 0
+        need_lex = (not emb_hits) or rrf_weight("léxica") > 0 or bool(_cfg.MEM_RECALL_EXPAND)
+        exact_hits = self._exact_search(question, include_history=include_history) if need_exact else []
+        lexical_hits = (self._fts_search(self._fts_terms(question), include_history=include_history)
+                        if need_lex else [])
+        rankings: dict[str, list[dict[str, Any]]] = {
+            "exacta": exact_hits,
+            "léxica-FTS5 (BM25)": lexical_hits,
+        }
+        if emb_hits:
+            rankings["embeddings (coseno)"] = emb_hits
 
         emb_ids = {c["id"] for c in emb_hits}
         top_emb_sim = max((float(c.get("sim", 0.0)) for c in emb_hits), default=0.0)
@@ -269,7 +258,7 @@ class RetrievalMixin:
 
         # Activación Propagada Sináptica
         seed_nodes = list(dict.fromkeys(c["node_id"] for c in (emb_hits[:3] + exact_hits[:2] + lexical_hits[:2])))[:5]
-        if seed_nodes and getattr(_cfg, "SYN_ENABLED", True):
+        if seed_nodes and getattr(_cfg, "SYN_ENABLED", True) and (rrf_weight("sinapsis") > 0 or not emb_hits):
             try:
                 syn_hits = self._synaptic_search(seed_nodes, limit=int(getattr(_cfg, "SYN_SPREAD_LIMIT", 6)), include_history=include_history)
                 if syn_hits:
@@ -314,11 +303,31 @@ class RetrievalMixin:
         candidates = [by_id[i] for i in ordered]
         methods = [m for m, h in rankings.items() if h]
 
+        # [PARCHE4] Reranker (juez LLM o cross-encoder): reordena el top-K y decide si algo responde de verdad.
+        rr_info = None
+        _rr = getattr(self, "reranker", None)
+        if _rr is not None and candidates and _rr.enabled():
+            rr_info = _rr.rerank(question, candidates)
+            if rr_info is not None:
+                candidates = rr_info["candidates"]
+                ordered = [c["id"] for c in candidates]
+                methods.append(f"reranker ({rr_info['mode']})")
+        rr_pub = rr_info["public"] if rr_info is not None else None
+
         # Evaluación de la compuerta de relevancia / abstención
-        is_relevant = self._is_relevant_result(question, candidates, sim_of, exact_hits)
+        if rr_info is not None:
+            if rr_info["verdict"]:
+                is_relevant, is_tentative = True, False
+            elif str(getattr(_cfg, "RERANK_NONE", "tentative")).strip().lower() == "abstain":
+                is_relevant, is_tentative = False, False
+            else:
+                is_relevant, is_tentative = True, True
+        else:
+            is_relevant, is_tentative = self._classify_relevance(question, candidates, sim_of, exact_hits)
         if not is_relevant:
             _r = empty(methods)
             _r["candidates"] = ordered
+            _r["rerank"] = rr_pub
             return _r
 
         # ======================================================================
@@ -328,7 +337,10 @@ class RetrievalMixin:
             synthesize = not bool(getattr(_cfg, "LTM_DIRECT_RETRIEVAL", False))
 
         if not synthesize and candidates:
-            top_cells = candidates[:max(1, min(6, len(candidates)))]
+            _n_top = 6   # [PARCHE4] con reranker: solo los recuerdos que responden (o 3 dudosos, con aviso)
+            if rr_info is not None:
+                _n_top = int(rr_info.get("n_relevant") or 0) or 3
+            top_cells = candidates[:max(1, min(_n_top, len(candidates)))]
             used_ids = [c["id"] for c in top_cells]
             sources = sorted({c["fuente"] for c in top_cells if c.get("fuente")})
             paths = sorted({self._path_str(c["node_id"]) for c in top_cells})
@@ -358,6 +370,7 @@ class RetrievalMixin:
 
             return {
                 "found": True,
+                "tentative": is_tentative,
                 "answer": ans_txt,
                 "cells": used_ids,
                 "sources": sources,
@@ -366,6 +379,7 @@ class RetrievalMixin:
                 "methods": methods,
                 "restored": restored,
                 "candidates": ordered,
+                "rerank": rr_pub,
                 "direct_retrieval": True
             }
 
@@ -412,6 +426,7 @@ class RetrievalMixin:
             if not isinstance(res_obj, dict) or not res_obj.get("found"):
                 _r = empty(methods)
                 _r["candidates"] = ordered
+                _r["rerank"] = rr_pub
                 return _r
 
         raw_used = res_obj.get("used", [])
@@ -489,6 +504,7 @@ class RetrievalMixin:
 
         return {
             "found": True,
+            "tentative": is_tentative,
             "answer": ans_txt,
             "cells": used_ids,
             "sources": sources,
@@ -497,4 +513,5 @@ class RetrievalMixin:
             "methods": methods,
             "restored": restored,
             "candidates": ordered,
+            "rerank": rr_pub,
         }
