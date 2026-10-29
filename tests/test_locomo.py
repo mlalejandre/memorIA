@@ -135,6 +135,17 @@ class TestLocomoComparison(unittest.TestCase):  # [PARCHE12]
         self.assertEqual(locomo.trap_source("Ferrari", ["nada"], ["nada"]), "ninguno claro")
 
 
+class TestLocomoDepth(unittest.TestCase):  # [PARCHE15]
+    def test_covered_and_buckets(self):
+        ranks = {"D1:1": (3, None), "D2:1": (15, 8), "D3:1": (None, 40)}
+        self.assertAlmostEqual(locomo.covered(ranks, 10, 6), 1 / 3)
+        self.assertAlmostEqual(locomo.covered(ranks, 10, 10), 2 / 3)
+        self.assertAlmostEqual(locomo.covered(ranks, 50, 50), 1.0)
+        self.assertEqual(locomo.covered({}, 10, 6), 0.0)
+        self.assertEqual([locomo.depth_bucket(x) for x in (1, 7, 11, 21, 51, None)],
+                         ["1-6", "7-10", "11-20", "21-50", "51-200", "—"])
+
+
 class TestLocomoIngestion(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="hmem_locomo_"))
@@ -198,6 +209,9 @@ class TestLocomoIngestion(unittest.TestCase):
         self.assertTrue(ret["in_cand"])
         system = locomo.system_prompt(ret)
         self.assertIn("Fecha actual", system)
+        ranks = locomo.deep_ranks(tree, "What is the name of Lucas's ferret Pimienta?", {"D1:1"}, st)  # [PARCHE15]
+        self.assertIn("D1:1", ranks)
+        self.assertIsNotNone(ranks["D1:1"][1])
 
 
 if __name__ == "__main__":

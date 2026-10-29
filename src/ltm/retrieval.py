@@ -337,7 +337,8 @@ class RetrievalMixin:
             synthesize = not bool(getattr(_cfg, "LTM_DIRECT_RETRIEVAL", False))
 
         if not synthesize and candidates:
-            _n_top = 6   # [PARCHE4] con reranker: solo los recuerdos que responden (o 3 dudosos, con aviso)
+            _n_top = max(1, int(getattr(_cfg, "LTM_DIRECT_TOP_K", 6)))   # [PARCHE13] configurable (antes 6)
+            # [PARCHE4] con reranker: solo los recuerdos que responden (o 3 dudosos, con aviso)
             if rr_info is not None:
                 _n_top = int(rr_info.get("n_relevant") or 0) or 3
             top_cells = candidates[:max(1, min(_n_top, len(candidates)))]

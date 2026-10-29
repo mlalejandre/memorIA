@@ -594,6 +594,65 @@ class TestAttributionRule(unittest.TestCase):  # [PARCHE12]
         self.assertIn("es de quien habla, no de su interlocutor", system)
 
 
+class TestEpisodePromptK(unittest.TestCase):  # [PARCHE16]
+    def _system(self, n):
+        from agente import Agent
+        epi = [{"ts": 1700000000.0 + i, "role": "user", "text": f"Persona{i}: episodio número {i}"} for i in range(n)]
+        return Agent._build_system(None, {"recent": [], "hits": []}, {"found": False}, epi)
+
+    def test_default_is_twenty(self):  # [PARCHE17]
+        self.assertEqual(C.EPI_PROMPT_K, int(os.environ.get("EPI_PROMPT_K", "20")))
+        self.assertGreaterEqual(C.EPI_LOOKUP_K, C.EPI_PROMPT_K)
+
+    def test_lookup_never_below_prompt(self):  # [PARCHE18]
+        self.assertEqual(C._episode_limits(6, 20), (22, 20))
+        self.assertEqual(C._episode_limits(22, 20), (22, 20))
+        self.assertEqual(C._episode_limits(30, 5), (30, 5))
+        self.assertEqual(C._episode_limits(3, 0), (3, 1))
+
+    def test_cap_of_five_still_works(self):
+        with mock.patch.object(C, "EPI_PROMPT_K", 5):
+            s = self._system(8)
+        self.assertIn("episodio número 4", s)
+        self.assertNotIn("episodio número 5", s)
+
+    def test_cap_is_configurable(self):
+        with mock.patch.object(C, "EPI_PROMPT_K", 7):
+            s = self._system(8)
+        self.assertIn("episodio número 6", s)
+        self.assertNotIn("episodio número 7", s)
+
+
+class TestDirectTopK(unittest.TestCase):  # [PARCHE13]
+    def test_default_matches_config(self):
+        self.assertEqual(C.LTM_DIRECT_TOP_K, int(os.environ.get("LTM_DIRECT_TOP_K", "10")))  # [PARCHE14]
+
+    def test_top_k_limits_injected_facts(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_topk_"))
+        try:
+            llm = MockLLM()
+            tree = MemoryTree(tmp / "ltm", llm)
+            tree.emb = vectores.EmbeddingService(tree, embedder=MockEmbedder())
+            for i, lugar in enumerate(["Islandia", "Chile", "Japón", "Italia", "Hawái", "Indonesia", "México", "Kenia"]):
+                txt = f"El volcán número {i} de {lugar} entró en erupción con lava basáltica."
+                llm.register(txt, "Geología")
+                tree.store(txt, 7)
+            tree.emb.sync()
+            q = "¿Qué volcán entró en erupción con lava basáltica?"
+            sizes = {}
+            for k in (2, 7):
+                with mock.patch.object(C, "LTM_DIRECT_TOP_K", k):
+                    r = tree.recall(q, reinforce=False, synthesize=False)
+                self.assertTrue(r["found"])
+                sizes[k] = len(r["cells"])
+            self.assertEqual(sizes[2], 2)
+            self.assertGreater(sizes[7], 2)
+            self.assertLessEqual(sizes[7], 7)
+            tree.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
     def test_append_without_rebuild_and_delete_rebuilds(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))

@@ -307,7 +307,7 @@ class Agent:
         if epi:
             seen = {str(e.get("text", "")).strip() for e in stm.get("recent", [])}
             seen |= {str(h.get("text", "")).strip() for h in stm.get("hits", [])}
-            fresh = [e for e in epi if str(e["text"]).strip() not in seen][:5]
+            fresh = [e for e in epi if str(e["text"]).strip() not in seen][:max(1, int(getattr(C, "EPI_PROMPT_K", 20)))]  # [PARCHE16]
             if fresh:
                 parts.append("\n## Recuerdos literales de conversaciones pasadas (memoria episódica)")
                 parts.append("Estos episodios son transcripciones fechadas de lo que se dijo entonces, no necesariamente el estado actual. Para preguntas sobre el presente, prioriza los hechos de memoria a largo plazo cuya vigencia esté activa; usa episodios como contexto histórico y no como prueba de que un hecho siga vigente.")
@@ -330,7 +330,7 @@ class Agent:
         if not fn:
             return []
         try:
-            return fn(text, getattr(C, "EPI_LOOKUP_K", 6)) or []
+            return fn(text, getattr(C, "EPI_LOOKUP_K", 22)) or []  # [PARCHE17]
         except Exception as exc:
             self.log(f"[Episódica] {exc}")
             return []

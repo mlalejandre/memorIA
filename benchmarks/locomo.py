@@ -276,6 +276,42 @@ def trap_source(trap: str, facts: list[str], episodes: list[str]) -> str:
     return "episódica" if e >= 0.5 and e >= f else ("hechos" if f >= 0.5 else "ninguno claro")
 
 
+# ---- [PARCHE15] profundidad de la evidencia (solo recuperación, sin LLM)
+DEPTH_GRID = [(10, 6), (10, 10), (10, 20), (20, 10), (20, 20), (30, 30), (50, 50)]   # (hechos K, episodios E)
+
+
+def deep_ranks(tree: Any, question: str, ev: set[str], state: dict[str, Any], depth: int = 200) -> dict[str, tuple]:
+    """Para cada turno de evidencia: (puesto del primer hecho cuyo bloque lo contiene, puesto del episodio exacto),
+    en una búsqueda por embeddings sin umbral hasta `depth`. None = no aparece."""
+    emb = getattr(tree, "emb", None)
+    if emb is None or not ev:
+        return {}
+    qv = emb.embed_query(question)
+    if qv is None:
+        return {}
+    cells = [str(r) for r, _s in emb.store.search("cell", qv, depth, -1.0, emb.model)]
+    epis = [str(r) for r, _s in emb.store.search("episode", qv, depth, -1.0, emb.model)]
+    out: dict[str, tuple] = {}
+    for d in ev:
+        cr = next((i for i, c in enumerate(cells, 1) if d in state["cell_dia"].get(c, [])), None)
+        er = next((i for i, e in enumerate(epis, 1) if state["epi_dia"].get(e) == d), None)
+        out[d] = (cr, er)
+    return out
+
+
+def covered(ranks: dict[str, tuple], k: int, e: int) -> float:
+    """Fracción de los turnos de evidencia alcanzados con K hechos y E episodios."""
+    if not ranks:
+        return 0.0
+    hit = sum(1 for cr, er in ranks.values() if (cr is not None and cr <= k) or (er is not None and er <= e))
+    return hit / len(ranks)
+
+
+def depth_bucket(r: int | None) -> str:
+    return "—" if r is None else "1-6" if r <= 6 else "7-10" if r <= 10 else "11-20" if r <= 20 else (
+        "21-50" if r <= 50 else "51-200")
+
+
 def evidence_bucket(in_ctx: bool, in_cand: bool, has_cell: bool) -> str:
     """Dónde se perdió la evidencia de una respuesta fallida."""
     if in_ctx:
@@ -489,6 +525,7 @@ def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]
     hit = lambda ids: any(evidence & set(cell_dia.get(str(i), [])) for i in ids)
     hit_epi = lambda eps: any(epi_dia.get(str(e.get("id"))) in evidence for e in eps)
     injected = list(r.get("cells") or []) if r.get("found") else []
+    n_epi = max(1, int(getattr(C, "EPI_PROMPT_K", 5)))   # [PARCHE16] antes [:5] fijo, como el agente
     top_sim = None   # [PARCHE11] similitud coseno del mejor hecho (fuera del tiempo medido)
     emb = getattr(tree, "emb", None)
     if emb is not None:
@@ -501,11 +538,12 @@ def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]
     return {
         "top_sim": top_sim,
         "ev_rank": evidence_rank(r.get("candidates") or [], cell_dia, evidence),
-        "coverage": coverage(evidence, injected, epi[:5], cell_dia, epi_dia),
+        "coverage": coverage(evidence, injected, epi[:n_epi], cell_dia, epi_dia),
+        "epi_in": epi[:n_epi],   # [PARCHE16] los episodios que muestra _build_system (EPI_PROMPT_K)
         "lines": fact_lines(r.get("answer", "")) if r.get("found") else [],
         "r": r, "epi": epi, "ms": (t2 - t0) * 1000, "ms_recall": (t1 - t0) * 1000,
         "state": "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme"),
-        "in_ctx": bool(evidence) and (hit(injected) or hit_epi(epi[:5])),
+        "in_ctx": bool(evidence) and (hit(injected) or hit_epi(epi[:n_epi])),
         "in_cand": bool(evidence) and (hit(r.get("candidates") or []) or hit_epi(epi)),
         "has_cell": bool(evidence) and any(evidence & set(v) for v in cell_dia.values()),
     }
@@ -577,10 +615,14 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     base = cache_root() if ctx.live else Path(ctx.tmp) / "locomo"
     print(f"   datos: {info}")
     print(f"   conversaciones: {', '.join(s['sample_id'] for s in samples)} · bloque {size} turnos · "
-          f"caché: {base}")
+          f"hechos inyectados (LTM_DIRECT_TOP_K) {getattr(C, 'LTM_DIRECT_TOP_K', 6)} · episodios en el prompt "
+          f"(EPI_PROMPT_K) {getattr(C, 'EPI_PROMPT_K', 5)} de {getattr(C, 'EPI_LOOKUP_K', 6)} buscados · caché: {base}")  # [PARCHE13] [PARCHE16]
 
     items: list[dict[str, Any]] = []
     ingest_stats: list[dict[str, Any]] = []
+    deep = os.getenv("HMEM_LOCOMO_PROFUNDIDAD", "").strip().lower() in {"1", "true", "yes", "si", "sí"}  # [PARCHE15]
+    only_retrieval = os.getenv("HMEM_LOCOMO_SOLO_RECUPERACION", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+    depth_rows: list[dict[str, Any]] = []
     all_facts: list[str] = []
     for sample in samples:
         sid = str(sample["sample_id"])
@@ -636,6 +678,8 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             subj = subject_of(str(q["question"]), spk_a, spk_b)
             other = (spk_b if subj == spk_a else spk_a) if subj else None
             ev_spk = sorted({spk_of[d] for d in ev if d in spk_of})   # [PARCHE12] quién pronunció la evidencia
+            if deep:   # [PARCHE15]
+                depth_rows.append({"cat": cat, "ranks": deep_ranks(tree, str(q["question"]), ev, state)})
             items.append({"subj": subj, "other": other, "ev_spk": ev_spk,
                           "ph": phrasing(ret["lines"], subj, other),
                           "sid": sid, "q": str(q["question"]), "cat": cat, "ev": ev,
@@ -699,6 +743,13 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         if sel:
             print(f"   {CATS[c]:<14}{len(sel):>5}{pct(sum(it['ret']['in_ctx'] for it in sel) / len(sel)):>14}"
                   f"{pct(sum(it['ret']['in_cand'] for it in sel) / len(sel)):>13}")
+    sys_chars = sorted(len(it["system"]) for it in items)   # [PARCHE16] coste del contexto
+    if sys_chars:
+        print(f"   prompt de sistema: mediana {percentile(sys_chars, 50) / 1000:.1f} k caracteres · P95 "
+              f"{percentile(sys_chars, 95) / 1000:.1f} k (≈ /4 tokens)")
+        R.add(S, "Prompt de sistema (mediana / P95, caracteres)", True,
+              f"{percentile(sys_chars, 50):.0f} / {percentile(sys_chars, 95):.0f}", "(observación)", "info",
+              "agente.py · _build_system")
     R.add(S, "Evidencia en el prompt (categorías 1-4)", True, pct(ctx_rate), "(observación)", "info",
           "ltm/retrieval.py · recall / episodica.py", f"entre candidatos: {pct(cand_rate)}")
     R.add(S, "LoCoMo · P95 recuperación (recall + episódica)", percentile(lat, 95) <= north_star["p95_ms"],
@@ -738,6 +789,42 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
           f"{len(items) - len(lost_ctx)}/{len(items)}", "todas", "alto", "agente.py · _build_system",
           evidence=[f"«{it['q'][:60]}»" for it in lost_ctx[:4]])
 
+    if deep and depth_rows:   # [PARCHE15] ¿a qué profundidad está la evidencia y qué cobertura daría más contexto?
+        rows_ev = [d for d in depth_rows if d["cat"] in POS_CATS and d["ranks"]]
+        print(f"\n   PROFUNDIDAD DE LA EVIDENCIA (búsqueda por embeddings sin umbral, {len(rows_ev)} preguntas con evidencia)")
+        print("   puesto de cada turno de evidencia · hechos (bloque de 6 turnos) / episodios (turno exacto) · "
+              "— = más allá del puesto 200:")
+        order = ["1-6", "7-10", "11-20", "21-50", "51-200", "—"]
+        for c in POS_CATS:
+            sel = [r for d in rows_ev if d["cat"] == c for r in d["ranks"].values()]
+            if not sel:
+                continue
+            ch = {b: sum(1 for cr, _e in sel if depth_bucket(cr) == b) / len(sel) for b in order}
+            eh = {b: sum(1 for _c, er in sel if depth_bucket(er) == b) / len(sel) for b in order}
+            print(f"   {CATS[c]:<12} n={len(sel):<4} hechos " + " ".join(f"{b}:{pct(ch[b])}" for b in order))
+            print(f"   {'':<12} {'':<6} episodios " + " ".join(f"{b}:{pct(eh[b])}" for b in order))
+        print("   cobertura media de la evidencia con K hechos + E episodios (techo: el LLM aún tiene que usarla):")
+        head = "   " + f"{'categoría':<14}" + "".join(f"{f'K{k}+E{e}':>10}" for k, e in DEPTH_GRID)
+        print(head)
+        for c in list(POS_CATS) + [0]:
+            sel = [d for d in rows_ev if (d["cat"] == c or c == 0)]
+            if not sel:
+                continue
+            name = "todas" if c == 0 else CATS[c]
+            vals = [sum(covered(d["ranks"], k, e) for d in sel) / len(sel) for k, e in DEPTH_GRID]
+            full = [sum(1 for d in sel if covered(d["ranks"], k, e) >= 0.999) / len(sel) for k, e in DEPTH_GRID]
+            print(f"   {name:<14}" + "".join(f"{pct(v):>10}" for v in vals))
+            print(f"   {'· completa':<14}" + "".join(f"{pct(v):>10}" for v in full))
+            if c in (0, 1):
+                R.add(S, f"Cobertura de evidencia por K+E · {name}", True,
+                      " · ".join(f"K{k}+E{e} {pct(v)}" for (k, e), v in zip(DEPTH_GRID, vals)), "(diagnóstico)",
+                      "info", "ltm/retrieval.py (K) · config.EPI_LOOKUP_K (E)")
+        print(f"   (actual: K{getattr(C, 'LTM_DIRECT_TOP_K', 10)}+E{getattr(C, 'EPI_PROMPT_K', 20)} · 'completa' = todas "
+              "las evidencias de la pregunta alcanzadas)")  # [PARCHE17]
+    if only_retrieval:
+        print("   (HMEM_LOCOMO_SOLO_RECUPERACION=1: no se generan respuestas ni se juzga)")
+        return
+
     if not ctx.live:
         print("   ⚠ modo emulado: valida la fontanería (ingesta, mapas de evidencia, prompt); "
               "las respuestas y el juez requieren --live")
@@ -754,11 +841,14 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
 
     def answer(job: tuple[dict, str]) -> str:
         it, system = job
+        t_a = time.perf_counter()   # [PARCHE17] tiempo de respuesta del agente (LLM incluido)
         try:
             return chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
                              max_tokens=350, temperature=0.2)
         except Exception as exc:
             return f"[error LLM: {type(exc).__name__}]"
+        finally:
+            it["t_answer"] = time.perf_counter() - t_a
 
     def judge(it: dict) -> bool | None:
         if it["cat"] == 5:
@@ -790,6 +880,13 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     n_inv = sum(map(inv, neg))
     c_lo, c_hi = wilson(c_ok, len(pos))
     i_lo, i_hi = wilson(n_inv, len(neg))
+    t_ans = sorted(it["t_answer"] for it in main_items if it.get("t_answer") is not None)   # [PARCHE17]
+    if t_ans:
+        print(f"\n   tiempo de respuesta del agente (LLM incluido, {workers} en paralelo): mediana "
+              f"{percentile(t_ans, 50):.1f} s · P95 {percentile(t_ans, 95):.1f} s")
+        R.add(S, "Tiempo de respuesta del agente (mediana / P95)", True,
+              f"{percentile(t_ans, 50):.2f} s / {percentile(t_ans, 95):.2f} s", "(observación)", "info",
+              "agente.py · _build_system (tamaño del prompt)", f"{workers} en paralelo")
     print(f"\n   🎯 OBJETIVO EN LOCOMO  ({len(pos)} preguntas con respuesta · {len(neg)} adversariales)")
     print(f"   correctas {c_ok}/{len(pos)} = {pct(c_ok / max(1, len(pos)))} [IC95 {pct(c_lo)}–{pct(c_hi)}] "
           f"(meta ≥ {pct(north_star['correctas'])}) · inventa {n_inv}/{len(neg)} = {pct(n_inv / max(1, len(neg)))} "
@@ -835,7 +932,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     # ---- [PARCHE12] auditoría automática: de dónde sale lo inventado y posibles errores de etiqueta de LoCoMo
     src_cnt: dict[str, int] = {}
     for it in bad_n:
-        k = trap_source(it["trap"], it["ret"]["lines"], [str(e.get("text", "")) for e in it["ret"]["epi"][:5]])
+        k = trap_source(it["trap"], it["ret"]["lines"], [str(e.get("text", "")) for e in it["ret"]["epi_in"]])
         src_cnt[k] = src_cnt.get(k, 0) + 1
     own = [it for it in bad_n if it["subj"] and it["ev_spk"] == [it["subj"]]]
     print(f"   origen del dato inventado: " + " · ".join(f"{k} {v}" for k, v in sorted(src_cnt.items(), key=lambda x: -x[1]))
@@ -854,7 +951,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         new_rows = [{"sid": it["sid"], "q": it["q"], "cat": it["cat"], "veredicto": it.get("v")} for it in main_items]
         cmp = compare_runs(base_rows, new_rows) if base_rows else {}
         if cmp:
-            print(f"\n   COMPARACIÓN PAREADA con {Path(base_path).name} (mismas preguntas, mismo contexto recuperado)")
+            print(f"\n   COMPARACIÓN PAREADA con {Path(base_path).name} (mismas preguntas; solo cambia lo que prueba el experimento)")
             for key, label, unit in (("pos", "correctas", "bien"), ("neg", "inventa", "inventa")):
                 c = cmp[key]
                 if not c["n"]:
@@ -893,7 +990,9 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
           "ltm/retrieval.py · modo directo (top-6)")
 
     # detalle completo para auditar (fuera de git)
-    out = base / f"resultados_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
+    # [PARCHE17] solo una ejecución COMPLETA (10 conversaciones, todas las preguntas) es base de comparaciones
+    full = len(samples) == len(data) and not maxq
+    out = base / f"{'resultados' if full else 'parcial'}_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
     try:
         with out.open("w", encoding="utf-8") as fo:
             for it in done_items:
@@ -902,12 +1001,13 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "veredicto": it.get("v"), "estado": it["ret"]["state"],
                                      "evid_prompt": it["ret"]["in_ctx"], "evid_cand": it["ret"]["in_cand"],
                                      "causa": it.get("bucket"), "ms": round(it["ret"]["ms"], 1),
+                                     "t_respuesta": round(it.get("t_answer") or 0.0, 2),  # [PARCHE17]
                                      # [PARCHE11] contexto completo para auditar a mano
                                      "sujeto": it["subj"], "hablante_evid": it["ev_spk"],  # [PARCHE12]
                                      "identidad": it["ph"], "top_sim": it["ret"]["top_sim"],
                                      "rango_evid": it["ret"]["ev_rank"], "cobertura": round(it["ret"]["coverage"], 3),
                                      "evidencia": sorted(it["ev"]), "hechos": it["ret"]["lines"],
-                                     "episodios": [str(e.get("text", ""))[:300] for e in it["ret"]["epi"][:5]]},
+                                     "episodios": [str(e.get("text", ""))[:300] for e in it["ret"]["epi_in"]]},
                                     ensure_ascii=False) + "\n")
         print(f"\n   detalle de cada pregunta: {out}")
     except OSError:

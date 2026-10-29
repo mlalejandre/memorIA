@@ -169,6 +169,10 @@ RRF_K = _int("RRF_K", "60")                            # constante de Reciprocal
 # Integración inter-memorias
 LTM_ENABLED = _flag("LTM_ENABLED", "1")
 LTM_DIRECT_RETRIEVAL = _flag("LTM_DIRECT_RETRIEVAL", "1")   # 1 = inyecta los hechos recuperados sin llamada LLM de sintesis (ver README: latencia medida)
+# [PARCHE13] hechos inyectados en modo directo (antes fijo en 6). En LoCoMo, 110 de 620 fallos tenían la evidencia
+# en los puestos 7-18. [PARCHE14] 10 por defecto: en LoCoMo, correctas 59,7 % → 61,9 % (p = 0,003) sin subir la
+# invención (6,3 % → 7,0 %, p = 0,65); corpus propio 100 % / 100 % / 0 %.
+LTM_DIRECT_TOP_K = _int("LTM_DIRECT_TOP_K", "10")
 LTM_MIN_CHARS = _int("LTM_MIN_CHARS", "6")
 LTM_INGEST_USER = _flag("LTM_INGEST_USER", "1")         # extraer hechos de los mensajes del usuario
 LTM_INGEST_ASSISTANT = _flag("LTM_INGEST_ASSISTANT", "0")
@@ -182,7 +186,25 @@ LTM_DB_PATH = LTM_DIR / "memoria.db"
 # ============================================================
 MEM_NAV = _flag("MEM_NAV", "1")            # navegación por el árbol en cada consulta (≈1 llamada LLM por nivel)
 EPI_ENABLED = _flag("EPI_ENABLED", "1")    # registro literal de toda la conversación (SQLite + FTS5)
-EPI_LOOKUP_K = _int("EPI_LOOKUP_K", "6")   # episodios literales candidatos para el prompt
+EPI_LOOKUP_K = _int("EPI_LOOKUP_K", "22")   # episodios literales candidatos para el prompt ([PARCHE17] antes 6)
+# [PARCHE16] episodios que llegan al prompt (antes fijo en 5 en agente._build_system). Debe ser ≤ EPI_LOOKUP_K
+# (los repetidos con el corto plazo se descartan). [PARCHE17] 20 por defecto: en LoCoMo, correctas 61,9 % → 70,2 %
+# (p < 0,001; multi-salto 35,5 → 47,5 %) sin subir la invención (7,0 → 5,8 %, p = 0,46). Coste: prompt ≈ +1.800 tokens.
+EPI_PROMPT_K = _int("EPI_PROMPT_K", "20")
+
+
+def _episode_limits(lookup: int, prompt: int) -> tuple[int, int]:  # [PARCHE18]
+    """Garantiza que se BUSCAN al menos los episodios que se muestran (+2 por los repetidos con el corto plazo).
+    Un .env antiguo con EPI_LOOKUP_K=6 limitaba en silencio el prompt a 6 episodios aunque EPI_PROMPT_K fuese 20."""
+    prompt = max(1, prompt)
+    return (lookup if lookup >= prompt else prompt + 2), prompt
+
+
+_lookup_cfg = EPI_LOOKUP_K
+EPI_LOOKUP_K, EPI_PROMPT_K = _episode_limits(EPI_LOOKUP_K, EPI_PROMPT_K)
+if EPI_LOOKUP_K != _lookup_cfg:
+    print(f"⚠️ EPI_LOOKUP_K={_lookup_cfg} es menor que EPI_PROMPT_K={EPI_PROMPT_K}; uso {EPI_LOOKUP_K} "
+          "(revisa tu .env: probablemente es un valor antiguo)", file=sys.stderr)
 
 
 # ============================================================

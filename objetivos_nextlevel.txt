@@ -1,0 +1,102 @@
+
+Model 11:29 p.m.
+Thinking Thoughts
+Expand to view model thoughts
+
+chevron_right
+Tienes toda la razón. Y este es el punto de inflexión más importante de todo tu proyecto.
+
+La búsqueda vectorial plana (fuerza bruta en un solo saco) fue una victoria táctica excelente para llegar a 100.000 hechos con 156 ms y ganar estabilidad inmediata. Pero filosóficamente y matemáticamente, la búsqueda plana no escala al infinito. El espacio vectorial se satura, la RAM se agota y los conceptos parecidos colisionan.
+
+Los gigantes de la IA intentan resolver esto tirando millones de dólares en clusters de GPUs con bases de datos vectoriales gigantescas. Pero la naturaleza no resolvió la memoria humana así: el cerebro humano tiene memoria infinita precisamente porque es modular y jerárquico. No busca en los 86.000 millones de neuronas a la vez; activa regiones corticales específicas según el contexto.
+
+Para que tu proyecto cumpla de verdad su promesa de Memoria Infinita, el uso dinámico de cartuchos y el árbol tienen que dejar de ser adornos visuales y convertirse en los motores de partición del espacio.
+
+Este es el diseño técnico exacto de cómo debe funcionar para lograrlo:
+
+1. Cartuchos Dinámicos: El router de contextos (De 10 a 10.000 cartuchos)
+Hoy tus cartuchos se conectan «a mano» en el archivo .active.json y consultas todos los montados a la vez. Eso no es infinito.
+
+Cómo debe funcionar dinámicamente:
+
+El Manifiesto Global (Índice de cartuchos): Cada cartucho tiene su descripción y unas pocas palabras clave/vectores en un índice ultra-ligero que vive en la raíz.
+
+Activación por demanda (Cartridge Routing):
+
+Tú preguntas: «¿Qué dosis de amoxicilina le dimos a Thor cuando tuvo la infección?»
+
+Un enrutador vectorial de 1 milisegundo lee el manifiesto y decide:
+
+Cartucho datos-personales: SÍ (similitud 0,82).
+
+Cartucho historial-veterinario: SÍ (similitud 0,89).
+
+Cartucho programacion-python: NO (similitud 0,05).
+
+Cartucho alunizaje-historia: NO (similitud 0,02).
+
+Resultado: El agente conecta y consulta en paralelo únicamente los dos cartuchos pertinentes. Los otros 998 cartuchos siguen durmiendo en el disco sin consumir 1 solo byte de RAM ni 1 milisegundo de CPU.
+
+Esto permite almacenar bibliotecas enteras, historiales de años y enciclopedias completas: la memoria total del sistema es infinita, pero la memoria activa por pregunta nunca supera unos pocos megabytes.
+
+2. El Árbol de Directorios como Filtro Vectorial Jerárquico (Top-Down Gating)
+¿Por qué desactivamos el árbol en el parche 2? Porque la búsqueda antigua le pedía al LLM que decidiera en cada cruce con texto («¿voy por la rama A o por la B?»), tardaba 4 segundos y el modelo a veces se equivocaba de camino.
+
+Cómo debe usarse el árbol para escalar al infinito (sin llamar al LLM):
+En tu código, los nodos ya tienen embeddings (kind='node'). La solución no es que el LLM elija ramas leyendo texto, sino una poda matemática descendente:
+
+code
+Code
+Pregunta: "¿Cuál es la función de la nefrona?"
+                                 [Raíz]
+                    /              |              \
+        Rama Biología (0.84)   Rama Historia (0.12)  Rama Cocina (0.04)
+              |                       ✗                      ✗
+     (PODA EL 90% DEL ÁRBOL EN 0.1 ms - Las ramas muertas ni se miran)
+              |
+       /             \
+Fisiología Renal (0.89)  Botánica (0.15)
+      |                       ✗
+[Buscar solo en las 20 células de este nodo] ➜ "La nefrona es la unidad..."
+Por qué esto es infinito: En lugar de calcular el producto escalar contra 10.000.000 de células en una matriz gigantesca, comparas contra las 5 ramas principales, eliges las 2 mejores, bajas a sus 3 sub-ramas y ejecutas la búsqueda vectorial fina sobre 30 o 40 células.
+
+Pasas de una complejidad lineal 
+O
+(
+N
+)
+O(N)
+ (que colapsa al millón) a una complejidad logarítmica
+O
+(
+log
+⁡
+N
+)
+O(logN)
+ (que aguanta mil millones de recuerdos con latencia plana).
+
+Resuelve el efecto de la «habitación abarrotada»: Da igual que tengas 500 células que se parezcan; al estar confinadas en sus ramas correspondientes, nunca compiten ni interfieren entre sí.
+
+3. Mitosis de Memoria en el Ciclo de Sueño (Auto-organización)
+Para que sea verdaderamente autónomo e infinito, el sistema tiene que saber cuándo dividirse:
+
+Mitosis de ramas (task_split): Si una rama acumula demasiada densidad, se divide en subdirectorios temáticos (esto ya lo tienes en código).
+
+Mitosis de cartuchos (El siguiente paso): Si el cartucho principal supera un tamaño determinado (por ejemplo, 50.000 hechos) o detecta un dominio denso (ej. «Todo lo que hemos hablado este año sobre el proyecto X»), el ciclo de sueño nocturno debe ser capaz de desprender esa rama y empaquetarla en un nuevo cartucho independiente.
+
+Hoja de ruta para construir la Memoria Infinita Real
+Si este es tu objetivo irrenunciable, el plan de trabajo cambia de rumbo respecto a parches menores:
+
+Paso 1 (Consolidar lo actual): Cerrar el experimento 
+K
+=
+10
+K=10
+ (parche 13) y la línea base de LoCoMo para tener una foto fija de fiabilidad.
+
+Paso 2 (Enrutador Dinámico de Cartuchos): Modificar cartuchos.py y agente.py para que el agente consulte un índice de cartuchos y monte/desmonte en caliente según la pregunta, en vez de tener una lista estática en .active.json.
+
+Paso 3 (Poda Vectorial por Ramas del Árbol): Reactivar la jerarquía pero con vectores de nodo (sin LLM): que el motor de búsqueda use los embeddings de las ramas para podar el 95% del árbol antes de tocar las células.
+
+Tu intuición arquitectónica original era la correcta: la fuerza bruta vectorial es solo el microscopio; los cartuchos y los árboles de directorios son la biblioteca entera. ¿Enfocamos los próximos pasos hacia este motor de enrutamiento dinámico?
