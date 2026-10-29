@@ -10,6 +10,7 @@ from typing import Any
 
 import config as C
 import descomponer  # [PARCHE19]
+import refinar  # [PARCHE20]
 from cartuchos import CartridgeManager
 from corto_plazo import ShortTermMemory, fmt_ts, role_label
 from largo_plazo import MemoryTree, MemLLM
@@ -363,6 +364,19 @@ class Agent:
             self.log(f"[Descomposición] {len(subs)} subconsultas en {secs:.1f}s: " + " | ".join(subs))
         return subs
 
+    def _second_pass(self, text: str, ltm_res: dict[str, Any], epi: list[dict[str, Any]]) -> list[str]:
+        """[PARCHE20] Consultas nuevas a partir de lo recuperado en la 1.ª pasada (LTM_SECOND_PASS=1)."""
+        blob = "\n".join(str(ltm_res.get(k) or "") for k in ("answer", "tentative_answer"))
+        lines = [ln.strip().lstrip("•").strip() for ln in blob.splitlines() if ln.strip().startswith("•")]
+        self._pause_ltm()
+        try:
+            more, secs = refinar.second_pass(getattr(self.ltm, "llm", None), text, refinar.contexto(lines, epi))
+        finally:
+            self._resume_ltm()
+        if more:
+            self.log(f"[2.ª pasada] {len(more)} consultas en {secs:.1f}s: " + " | ".join(more))
+        return more
+
     def _ingest(self, text: str, origin: str) -> None:
         if hasattr(self.ltm, "ingest_async"):
             try:
@@ -392,6 +406,12 @@ class Agent:
                     f_ltm = ex.submit(self._query_ltm_in_process, text, subs)
                     stm_ctx = f_stm.result()
                     ltm_res = f_ltm.result()
+
+                if refinar.second_pass_enabled():  # [PARCHE20] 2.ª pasada guiada por lo recuperado
+                    more = self._second_pass(text, ltm_res, epi_hits)
+                    if more:
+                        epi_hits = self._episodes_for(text, subs + more)
+                        ltm_res = self._query_ltm_in_process(text, subs + more)
 
                 self._set("CONSULTA", stm_lookup="done", ltm_query="done")
                 self._set("RESPUESTA", answer="run")

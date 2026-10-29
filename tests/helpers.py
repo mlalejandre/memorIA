@@ -107,6 +107,9 @@ class MockLLM:
             if a and a == b:
                 return {"relation": "supersedes", "confidence": 0.95, "reason": "mismo atributo"}
             return {"relation": "complementary", "confidence": 0.9, "reason": "atributos distintos"}
+        if "ha encontrado una primera búsqueda" in user:  # [PARCHE20] 2.ª pasada: busca el último recuerdo citado
+            m = re.findall(r"^- (.+)$", user, re.M)
+            return {"consultas": [m[-1][:80]] if m else []}
         if "Decide si basta con una búsqueda" in user:  # [PARCHE19] descomposición: parte por " and " / " y "
             m = re.search(r"Pregunta: (.*)", user)
             q = (m.group(1) if m else "").strip().rstrip("?")

@@ -197,6 +197,43 @@ class TestLocomoDecomposition(unittest.TestCase):  # [PARCHE19]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestLocomoRefine(unittest.TestCase):  # [PARCHE20]
+    def _rows(self, n, b, a, r, ar, drop_a=0.0):
+        rows = [{"cat": 1, "n_subs": 1, "t": 0.4, "n_ev_ses": 2, "ses_b": 3, "ses_a": 7,
+                 "cov_b": 1.0 if i < b else 0.5, "cov_a": 1.0 if i < a else 0.5, "cov_r": 1.0 if i < r else 0.5,
+                 "cov_ar": 1.0 if i < ar else 0.5, "cov_o": 1.0} for i in range(n)]
+        rows += [{"cat": 4, "n_subs": 0, "t": 0.3, "n_ev_ses": 1, "ses_b": 3, "ses_a": 7, "cov_b": 1.0,
+                  "cov_a": 1.0 - drop_a, "cov_r": 1.0, "cov_ar": 1.0 - drop_a, "cov_o": 1.0} for _ in range(50)]
+        return rows
+
+    def test_decision_prefers_simplest_within_2pp(self):
+        s = locomo.refine_summary(self._rows(200, 60, 80, 83, 84))      # +10 / +11.5 / +12 pp
+        self.assertEqual(locomo.refine_decision(s)[:2], ("GO", "a"))
+        s = locomo.refine_summary(self._rows(200, 60, 80, 90, 91))      # div +10, 2ª +15, ambas +15.5
+        self.assertEqual(locomo.refine_decision(s)[:2], ("GO", "r"))
+        s = locomo.refine_summary(self._rows(200, 60, 90, 75, 91, drop_a=0.05))   # div rompe las simples
+        self.assertEqual(locomo.refine_decision(s)[:2], ("GO", "r"))
+        s = locomo.refine_summary(self._rows(200, 60, 64, 65, 66))
+        self.assertEqual(locomo.refine_decision(s)[:2], ("NO-GO", None))
+        self.assertEqual(locomo.refine_decision(locomo.refine_summary([]))[0], "SIN DATOS")
+        self.assertAlmostEqual(s["cats"]["1"]["ses_a"], 7.0)
+
+    def test_refine_cache_keys_on_context(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_rc_"))
+        try:
+            c = locomo.RefineCache(tmp, "t")
+            a, _ = c.get(MockLLM(), "What did Ana paint?", "- Ana pinta cerámica")
+            self.assertEqual(a, ["Ana pinta cerámica"])
+            c.get(MockLLM(), "What did Ana paint?", "- otra cosa")
+            self.assertEqual(c.new, 2)
+            c.save()
+            c2 = locomo.RefineCache(tmp, "t")
+            self.assertEqual(c2.get(None, "What did Ana paint?", "- Ana pinta cerámica")[0], a)
+            self.assertEqual(c2.hits, 1)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestLocomoIngestion(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="hmem_locomo_"))

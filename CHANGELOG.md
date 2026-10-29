@@ -2,6 +2,11 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE20] -->
+- Episode diversity (`EPI_DIVERSITY=dia`, default `off`, experimental): episodes are searched deeper (`EPI_DIVERSITY_POOL`× `EPI_LOOKUP_K`) and at most `EPI_PER_DAY` per day reach the prompt, so turns from one session cannot fill the whole budget.
+- Second retrieval pass (`LTM_SECOND_PASS`, default `0`, experimental): one LLM call reads what the first pass found and writes 1-3 concrete queries for what may be missing; results are fused with RRF under the same budget.
+- LoCoMo diagnostic for both (`HMEM_LOCOMO_REFINAR=1`): evidence coverage for current retrieval, diversity, second pass, both and the oracle, plus the number of distinct sessions among prompt episodes, with a decision rule fixed before measuring.
+- Decomposition diagnostic result (patch 19): NO-GO. LoCoMo multi-hop questions are mostly about one person with evidence across sessions, so the LLM decomposed only 9 % of them and full coverage did not move (30.5 → 30.5 %), while the oracle reached 59.2 %.
 - Question decomposition (`LTM_DECOMPOSE`, default `0`, experimental): one LLM call rewrites a question that needs several facts into 2-3 single-fact search queries; facts and episodes retrieved for each are fused with RRF under the same budget (`LTM_DIRECT_TOP_K` facts, `EPI_PROMPT_K` episodes). Simple questions get no subqueries, so retrieval is unchanged.
 - LoCoMo decomposition diagnostic (`HMEM_LOCOMO_DESCOMP=1`, retrieval only with `HMEM_LOCOMO_SOLO_RECUPERACION=1`): evidence coverage per category for current retrieval, decomposition and an oracle that searches with the reference answer, with a decision rule fixed before measuring. Subqueries are cached so the later experiment uses exactly the same ones.
 

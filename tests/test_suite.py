@@ -718,6 +718,62 @@ class TestDecomposition(unittest.TestCase):  # [PARCHE19]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestRefine(unittest.TestCase):  # [PARCHE20]
+    def _ep(self, i, day):
+        return {"id": i, "ts": time.mktime((2024, 3, day, 12, 0, 0, 0, 0, -1)) + i, "text": f"e{i}"}
+
+    def test_por_dia_caps_and_fills(self):
+        import refinar
+        items = [self._ep(i, 1) for i in range(5)] + [self._ep(10 + i, 2) for i in range(2)] + [self._ep(20, 3)]
+        out = refinar.por_dia(items, 6, cap=2)
+        self.assertEqual([e["id"] for e in out], [0, 1, 10, 11, 20, 2])   # 2 del día 1, luego los otros días, relleno
+        self.assertEqual([e["id"] for e in refinar.por_dia(items, 3, cap=3)], [0, 1, 2])
+        self.assertEqual(len(refinar.por_dia(items, 50, cap=1)), len(items))
+        self.assertEqual(refinar.day_of("x"), "?")
+
+    def test_clean_accepts_single_query(self):
+        import refinar, descomponer
+        self.assertEqual(refinar.clean("¿Qué investigó Ana?", {"consultas": ["Ana agencias de adopción"]}),
+                         ["Ana agencias de adopción"])
+        self.assertEqual(descomponer.clean("¿Qué investigó Ana?", {"consultas": ["Ana agencias de adopción"]}), [])
+        self.assertEqual(refinar.clean("q", {"consultas": []}), [])
+
+    def test_contexto_and_failure(self):
+        import refinar
+        from types import SimpleNamespace
+        ctx = refinar.contexto(["Ana pinta", " "], [{"text": "Ana: fui a la playa"}, {"text": ""}])
+        self.assertEqual(ctx, "- Ana pinta\n- Ana: fui a la playa")
+        self.assertEqual(refinar.contexto([], []), "(nada)")
+
+        def boom(*a, **k):
+            raise RuntimeError("caído")
+        self.assertEqual(refinar.second_pass(SimpleNamespace(ask_json=boom), "¿Algo?", ctx)[0], [])
+
+    def test_off_by_default(self):
+        self.assertEqual(C.EPI_DIVERSITY, os.environ.get("EPI_DIVERSITY", "off"))
+        self.assertEqual(C.LTM_SECOND_PASS, os.environ.get("LTM_SECOND_PASS", "0") == "1")
+
+    def test_search_episodes_diversify(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_div_"))
+        try:
+            tree = MemoryTree(tmp / "ltm", MockLLM())
+            tree.emb = vectores.EmbeddingService(tree, embedder=MockEmbedder())
+            for i in range(6):
+                tree.log_episode("user", f"Ana: hoy pinté un cuadro de cerámica número {i}", self._ep(i, 1)["ts"])
+            tree.log_episode("user", "Ana: pinté cerámica en el taller", self._ep(9, 5)["ts"])
+            plain = tree.search_episodes("Ana pintó cerámica", 3, diversify=False)
+            div = tree.search_episodes("Ana pintó cerámica", 3, diversify=True)
+            self.assertEqual(len(div), 3)
+            days = lambda eps: {time.strftime("%d", time.localtime(e["ts"])) for e in eps}
+            self.assertGreaterEqual(len(days(div)), len(days(plain)))
+            self.assertIn("05", days(div))
+            with mock.patch.object(C, "EPI_DIVERSITY", "dia"), mock.patch.object(C, "EPI_PER_DAY", 2):
+                self.assertIn("05", days(tree.search_episodes("Ana pintó cerámica", 3)))
+            tree.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
     def test_append_without_rebuild_and_delete_rebuilds(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))

@@ -35,6 +35,7 @@
 #   HMEM_LOCOMO_DIR      carpeta de caché (defecto experiment/locomo_cache)
 #   HMEM_LOCOMO_DESCOMP  1 = diagnóstico de descomposición de preguntas (techo de cobertura; ver [PARCHE19])
 #   HMEM_DESCOMP_FRAC    fracción de preguntas de un salto / temporales que entran en ese diagnóstico (def. 0.12)
+#   HMEM_LOCOMO_REFINAR  1 = diagnóstico de diversidad por día y 2.ª pasada (techo de cobertura; ver [PARCHE20])
 #   HMEM_E2E_WORKERS     respuestas/juicios en paralelo (defecto 2)
 from __future__ import annotations
 
@@ -54,6 +55,7 @@ from typing import Any, Callable
 
 import config as C
 import descomponer  # [PARCHE19]
+import refinar  # [PARCHE20]
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "locomo-v1"
@@ -428,6 +430,98 @@ def decomp_decision(s: dict[str, Any]) -> tuple[str, str]:
     return "NO-GO (la descomposición no alcanza el techo)", why
 
 
+# ---- [PARCHE20] diversidad por día y segunda pasada: caché, resumen por variante y regla de decisión
+class RefineCache:
+    """Consultas de la 2.ª pasada por (pregunta, contexto de la 1.ª pasada), en disco: el experimento reutiliza las
+    del diagnóstico mientras la 1.ª pasada no cambie. Se invalida si cambian el prompt o el modelo."""
+
+    def __init__(self, base: Path, tag: str) -> None:
+        h = hashlib.sha256()
+        for part in (refinar.REFINE_SYSTEM, refinar.REFINE_PROMPT, str(descomponer.max_subqueries()), tag):
+            h.update(str(part).encode("utf-8") + b"\0")
+        self.path = Path(base) / f"refinar_{h.hexdigest()[:10]}.json"
+        try:
+            self.data: dict[str, Any] = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            self.data = {}
+        self.new = self.hits = 0
+
+    def get(self, llm: Any, question: str, ctx: str) -> tuple[list[str], float]:
+        key = question + "\u241e" + hashlib.sha1(ctx.encode("utf-8")).hexdigest()[:16]
+        hit = self.data.get(key)
+        if isinstance(hit, dict):
+            self.hits += 1
+            return list(hit.get("subs") or []), float(hit.get("t") or 0.0)
+        subs, secs = refinar.second_pass(llm, question, ctx)
+        self.data[key] = {"subs": subs, "t": round(secs, 3)}
+        self.new += 1
+        if self.new % 25 == 0:
+            self.save()
+        return subs, secs
+
+    save = DecompCache.save
+
+
+REFINE_VARIANTS = (("a", "diversidad por día"), ("r", "2.ª pasada"), ("ar", "ambas"))
+REFINE_RULE = ("Una variante es ELEGIBLE si, en multi-salto, la cobertura COMPLETA de la evidencia sube ≥ 5 pp frente a "
+               "la actual (mismo presupuesto K+E) con p < 0,05, y en las preguntas de un salto y temporales la cobertura "
+               "media no baja más de 2 pp. GO con la variante MÁS SIMPLE (diversidad < 2.ª pasada < ambas) cuya ganancia "
+               "quede a ≤ 2 pp de la mejor elegible. Si ninguna es elegible: NO-GO.")
+
+
+def refine_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """rows: {cat, cov_b, cov_a, cov_r, cov_ar, cov_o, ses_b, ses_a, n_ev_ses, n_subs, t}."""
+    full = lambda x: x >= 0.999
+
+    def group(sel: list[dict[str, Any]]) -> dict[str, Any]:
+        n = len(sel)
+        if not n:
+            return {"n": 0}
+        g: dict[str, Any] = {"n": n, "consulta": sum(1 for r in sel if r["n_subs"]) / n,
+                             "ses_b": sum(r["ses_b"] for r in sel) / n, "ses_a": sum(r["ses_a"] for r in sel) / n,
+                             "ev_ses": sum(r["n_ev_ses"] for r in sel) / n}
+        for v in ("b", "a", "r", "ar", "o"):
+            g[f"cov_{v}"] = sum(r[f"cov_{v}"] for r in sel) / n
+            g[f"full_{v}"] = sum(1 for r in sel if full(r[f"cov_{v}"])) / n
+        for v in ("a", "r", "ar", "o"):
+            better = sum(1 for r in sel if full(r[f"cov_{v}"]) and not full(r["cov_b"]))
+            worse = sum(1 for r in sel if full(r["cov_b"]) and not full(r[f"cov_{v}"]))
+            g[f"mejora_{v}"], g[f"empeora_{v}"], g[f"p_full_{v}"] = better, worse, sign_p(worse, better)
+        return g
+
+    ts = sorted(r["t"] for r in rows)
+    return {"n": len(rows), "cats": {str(c): group([r for r in rows if r["cat"] == c]) for c in POS_CATS},
+            "simples": group([r for r in rows if r["cat"] in (2, 4)]),
+            "t_p50": percentile(ts, 50), "t_p95": percentile(ts, 95)}
+
+
+def refine_decision(s: dict[str, Any]) -> tuple[str, str | None, str]:
+    """Regla del parche 20, fijada ANTES de medir (ver REFINE_RULE). Devuelve (veredicto, variante, motivo)."""
+    mh, simple = s["cats"].get("1") or {"n": 0}, s.get("simples") or {"n": 0}
+    if not mh.get("n"):
+        return "SIN DATOS", None, "no hay preguntas multi-salto en el diagnóstico"
+    parts, ok = [], []
+    for v, name in REFINE_VARIANTS:
+        gain = mh[f"full_{v}"] - mh["full_b"]
+        drop = (simple["cov_b"] - simple[f"cov_{v}"]) if simple.get("n") else 0.0
+        elig = gain >= 0.05 - 1e-9 and mh[f"p_full_{v}"] < 0.05 and drop <= 0.02 + 1e-9
+        parts.append(f"{name} {gain * 100:+.1f} pp (p={mh[f'p_full_{v}']:.3g}; simples {-drop * 100:+.1f} pp)"
+                     + (" ✓" if elig else ""))
+        if elig:
+            ok.append((v, gain))
+    why = (f"multi-salto completa actual {mh['full_b'] * 100:.1f} % · " + " · ".join(parts)
+           + f" · oráculo {(mh['full_o'] - mh['full_b']) * 100:+.1f} pp")
+    if not ok:
+        return "NO-GO", None, why
+    best = max(g for _v, g in ok)
+    pick = next(v for v, _n in REFINE_VARIANTS if any(v == w and g >= best - 0.02 - 1e-9 for w, g in ok))
+    return "GO", pick, why
+
+
+REFINE_ENV = {"a": {"EPI_DIVERSITY": "dia"}, "r": {"LTM_SECOND_PASS": "1"},
+              "ar": {"EPI_DIVERSITY": "dia", "LTM_SECOND_PASS": "1"}}
+
+
 def evidence_bucket(in_ctx: bool, in_cand: bool, has_cell: bool) -> str:
     """Dónde se perdió la evidencia de una respuesta fallida."""
     if in_ctx:
@@ -632,13 +726,15 @@ def ingest(tree: Any, sample: dict, size: int, state: dict[str, Any],
 # ==============================================================================
 
 def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str],
-             subs: list[str] | None = None, t_decomp: float = 0.0) -> dict[str, Any]:
+             subs: list[str] | None = None, t_decomp: float = 0.0, diversify: bool | None = None) -> dict[str, Any]:
     # [PARCHE19] subs = subconsultas (descomposición u oráculo); t_decomp = segundos de la llamada que las generó
+    # [PARCHE20] diversify: None = lo que diga la configuración (EPI_DIVERSITY); True/False lo fuerza
     kw = {"extra_queries": list(subs)} if subs else {}
     t0 = time.perf_counter()
     r = tree.recall(question, reinforce=False, synthesize=False, **kw)
     t1 = time.perf_counter()
-    epi = tree.search_episodes(question, int(getattr(C, "EPI_LOOKUP_K", 6)), **kw) or []
+    ekw = dict(kw, **({} if diversify is None else {"diversify": diversify}))
+    epi = tree.search_episodes(question, int(getattr(C, "EPI_LOOKUP_K", 6)), **ekw) or []
     t2 = time.perf_counter()
     cell_dia, epi_dia = state["cell_dia"], state["epi_dia"]
     hit = lambda ids: any(evidence & set(cell_dia.get(str(i), [])) for i in ids)
@@ -662,6 +758,7 @@ def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]
         "lines": fact_lines(r.get("answer", "")) if r.get("found") else [],
         "r": r, "epi": epi, "ms": (t2 - t0 + t_decomp) * 1000, "ms_recall": (t1 - t0) * 1000,
         "ms_descomp": t_decomp * 1000, "subs": list(subs or []),   # [PARCHE19]
+        "sessions": len({str(state["epi_dia"].get(str(e.get("id")), "?")).split(":")[0] for e in epi[:n_epi]}),  # [PARCHE20]
         "state": "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme"),
         "in_ctx": bool(evidence) and (hit(injected) or hit_epi(epi[:n_epi])),
         "in_cand": bool(evidence) and (hit(r.get("candidates") or []) or hit_epi(epi)),
@@ -707,6 +804,50 @@ def _vote(chat: Any, system: str, user: str, key: str) -> bool | None:
         return v1
     votes = [v for v in (v1, v2, one()) if v is not None]
     return (2 * sum(votes) > len(votes)) if votes else None
+
+
+def report_refine(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dict[str, Any]:
+    """[PARCHE20] Imprime el diagnóstico de diversidad / 2.ª pasada, lo guarda en JSON y aplica la regla."""
+    s = refine_summary(rows)
+    print(f"\n   DIVERSIDAD POR DÍA Y 2.ª PASADA · techo de cobertura sin LLM de respuesta ({len(rows)} preguntas con "
+          f"evidencia; mismo presupuesto: {getattr(C, 'LTM_DIRECT_TOP_K', 10)} hechos + {getattr(C, 'EPI_PROMPT_K', 20)} "
+          f"episodios; diversidad ≤ {refinar.per_day()} episodios/día)")
+    print(f"   llamada de la 2.ª pasada: P50 {s['t_p50'] * 1000:.0f} ms · P95 {s['t_p95'] * 1000:.0f} ms")
+    print(f"   {'categoría':<14}{'n':>5}{'ses.ev':>7}{'ses. act→div':>14}   "
+          f"{'completa  act / div / 2ª / ambas / orác':>44}   {'cob. media act / div / 2ª / ambas':>36}")
+    for name, g in [(CATS[c], s["cats"][str(c)]) for c in POS_CATS] + [("un salto+temp.", s["simples"])]:
+        if not g.get("n"):
+            continue
+        print(f"   {name:<14}{g['n']:>5}{g['ev_ses']:>7.1f}{g['ses_b']:>8.1f}→{g['ses_a']:<5.1f}   "
+              + "".join(f"{pct(g[f'full_{v}']):>9}" for v in ("b", "a", "r", "ar", "o")) + "   "
+              + "".join(f"{pct(g[f'cov_{v}']):>9}" for v in ("b", "a", "r", "ar")))
+    mh = s["cats"].get("1", {})
+    if mh.get("n"):
+        print("   multi-salto, completa frente a la actual (+/−, p): " + " · ".join(
+            f"{name} +{mh[f'mejora_{v}']}/−{mh[f'empeora_{v}']} p={mh[f'p_full_{v}']:.3g}" for v, name in REFINE_VARIANTS))
+    verdict, variant, why = refine_decision(s)
+    print(f"   REGLA (fijada antes de medir): {REFINE_RULE}")
+    print(f"   ⇒ {verdict}{' · ' + dict(REFINE_VARIANTS)[variant] if variant else ''}: {why}")
+    for r in [r for r in rows if r["cat"] == 1 and r["n_subs"]][:5]:
+        print(f"     «{r['q'][:60]}» → " + " | ".join(x[:40] for x in r["subs"])
+              + f"   (completa {r['cov_b']:.2f} → {r['cov_r']:.2f})")
+    R.add(S, "Diversidad / 2.ª pasada · decisión", True, verdict + (f" ({variant})" if variant else ""),
+          "(regla previa)", "info", "refinar.py", why)
+    out = Path(base) / f"refinar_resumen_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    try:
+        out.write_text(json.dumps({"fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "regla": REFINE_RULE,
+                                   "decision": verdict, "variante": variant,
+                                   "variante_nombre": dict(REFINE_VARIANTS).get(variant),
+                                   "env": REFINE_ENV.get(variant, {}), "motivo": why, "resumen": s,
+                                   "config": {"K": getattr(C, "LTM_DIRECT_TOP_K", 10),
+                                              "E": getattr(C, "EPI_PROMPT_K", 20), "por_dia": refinar.per_day(),
+                                              "pool": getattr(C, "EPI_DIVERSITY_POOL", 3),
+                                              "max_consultas": descomponer.max_subqueries()},
+                                   "filas": rows}, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"   detalle del diagnóstico: {out}")
+    except OSError:
+        pass
+    return s
 
 
 def report_decomp(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dict[str, Any]:
@@ -793,6 +934,16 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     decomp_frac = min(1.0, max(0.0, float(os.getenv("HMEM_DESCOMP_FRAC", "0.12"))))
     dcache = DecompCache(base, "|".join(models)) if (decomp_on or decomp_diag) else None
     diag_rows: list[dict[str, Any]] = []
+    # [PARCHE20] diversidad por día (EPI_DIVERSITY) y 2.ª pasada (LTM_SECOND_PASS); diagnóstico con HMEM_LOCOMO_REFINAR=1
+    refine_on = refinar.second_pass_enabled()
+    refine_diag = os.getenv("HMEM_LOCOMO_REFINAR", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+    rcache = RefineCache(base, "|".join(models)) if (refine_on or refine_diag) else None
+    plain = not (decomp_on or refine_on or refinar.diversity_mode() == "dia")   # la recuperación es la actual
+    ref_rows: list[dict[str, Any]] = []
+    if rcache is not None or refinar.diversity_mode() != "off":
+        print(f"   diversidad de episodios: {refinar.diversity_mode()} (≤ {refinar.per_day()} por día) · 2.ª pasada: "
+              f"{'ACTIVA' if refine_on else 'inactiva'}{' · diagnóstico de techo' if refine_diag else ''}"
+              + (f" · caché {rcache.path.name} ({len(rcache.data)} entradas)" if rcache is not None else ""))
     if dcache is not None:
         print(f"   descomposición: {'ACTIVA en la recuperación' if decomp_on else 'inactiva en la recuperación'}"
               f"{' · diagnóstico de techo' if decomp_diag else ''} · máx. {descomponer.max_subqueries()} "
@@ -848,6 +999,30 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             ev = norm_evidence(q.get("evidence", []))
             subs, t_d = dcache.get(tree.llm, str(q["question"])) if decomp_on else ([], 0.0)   # [PARCHE19]
             ret = retrieve(tree, str(q["question"]), state, ev, subs, t_d)
+            if refine_on:   # [PARCHE20] producción: 2.ª pasada con lo recuperado en la 1.ª
+                more, t_r = rcache.get(tree.llm, str(q["question"]), refinar.contexto(ret["lines"], ret["epi_in"]))
+                ms_first = ret["ms"]
+                if more:
+                    ret = retrieve(tree, str(q["question"]), state, ev, subs + more, t_r)
+                    ret["ms"] += ms_first
+                else:
+                    ret["ms"] += t_r * 1000
+                ret["subs_ref"], ret["ms_refinar"] = more, t_r * 1000
+            if refine_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):   # [PARCHE20]
+                qq = str(q["question"])
+                rb = ret if plain else retrieve(tree, qq, state, ev, diversify=False)
+                ra = retrieve(tree, qq, state, ev, diversify=True)
+                more, t_r = rcache.get(tree.llm, qq, refinar.contexto(rb["lines"], rb["epi_in"]))
+                rr = retrieve(tree, qq, state, ev, more, diversify=False) if more else rb
+                rar = retrieve(tree, qq, state, ev, more, diversify=True) if more else ra
+                o_subs = oracle_subs(str(q.get("answer", "")))
+                ro = retrieve(tree, qq, state, ev, o_subs, diversify=False) if o_subs else rb
+                ref_rows.append({"sid": sid, "q": qq, "cat": cat, "gold": str(q.get("answer", "")),
+                                 "subs": more, "n_subs": len(more), "t": round(t_r, 3),
+                                 "n_ev_ses": len({d.split(":")[0] for d in ev}),
+                                 "ses_b": rb["sessions"], "ses_a": ra["sessions"],
+                                 "cov_b": rb["coverage"], "cov_a": ra["coverage"], "cov_r": rr["coverage"],
+                                 "cov_ar": rar["coverage"], "cov_o": ro["coverage"]})
             if decomp_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):   # [PARCHE19]
                 d_subs, d_t = (subs, t_d) if decomp_on else dcache.get(tree.llm, str(q["question"]))
                 rb = retrieve(tree, str(q["question"]), state, ev) if decomp_on else ret
@@ -1017,6 +1192,24 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
               f"{n_dec}/{len(items)} · {percentile(dt, 95):.0f} ms", "(observación)", "info", "descomponer.py")
     if decomp_diag and diag_rows:
         report_decomp(diag_rows, R, S, base)
+    ses = [it["ret"]["sessions"] for it in items if it["cat"] in POS_CATS]   # [PARCHE20]
+    if ses:
+        print(f"   sesiones distintas entre los episodios del prompt: media {sum(ses) / len(ses):.1f} · "
+              f"P10 {percentile(sorted(ses), 10):.0f} · P50 {percentile(sorted(ses), 50):.0f}")
+        R.add(S, "Sesiones distintas entre los episodios del prompt (media)", True, f"{sum(ses) / len(ses):.1f}",
+              "(observación)", "info", "ltm/explorer.py · search_episodes")
+    if rcache is not None:
+        rcache.save()
+        print(f"   2.ª pasada: {rcache.new} consultas generadas ahora · {rcache.hits} reutilizadas de la caché")
+    if refine_on:
+        rt = sorted(it["ret"].get("ms_refinar", 0.0) for it in items)
+        n_r = sum(1 for it in items if it["ret"].get("subs_ref"))
+        print(f"   2.ª pasada en producción: {n_r}/{len(items)} preguntas con consultas nuevas · llamada LLM "
+              f"P50 {percentile(rt, 50):.0f} ms / P95 {percentile(rt, 95):.0f} ms (incluida en el P95 de recuperación)")
+        R.add(S, "2.ª pasada: preguntas con consultas nuevas / llamada LLM P95", True,
+              f"{n_r}/{len(items)} · {percentile(rt, 95):.0f} ms", "(observación)", "info", "refinar.py")
+    if refine_diag and ref_rows:
+        report_refine(ref_rows, R, S, base)
 
     if only_retrieval:
         print("   (HMEM_LOCOMO_SOLO_RECUPERACION=1: no se generan respuestas ni se juzga)")
@@ -1200,6 +1393,8 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "causa": it.get("bucket"), "ms": round(it["ret"]["ms"], 1),
                                      "t_respuesta": round(it.get("t_answer") or 0.0, 2),  # [PARCHE17]
                                      "subconsultas": it["ret"].get("subs") or [],  # [PARCHE19]
+                                     "consultas_2a": it["ret"].get("subs_ref") or [],  # [PARCHE20]
+                                     "sesiones_prompt": it["ret"].get("sessions"),
                                      # [PARCHE11] contexto completo para auditar a mano
                                      "sujeto": it["subj"], "hablante_evid": it["ev_spk"],  # [PARCHE12]
                                      "identidad": it["ph"], "top_sim": it["ret"]["top_sim"],

@@ -196,6 +196,11 @@ EPI_PROMPT_K = _int("EPI_PROMPT_K", "20")
 # 0 por defecto hasta que un experimento pareado en LoCoMo lo justifique (ver src/descomponer.py).
 LTM_DECOMPOSE = _flag("LTM_DECOMPOSE", "0")
 LTM_DECOMPOSE_MAX = _int("LTM_DECOMPOSE_MAX", "3")
+# [PARCHE20] (ver src/refinar.py) · ambas desactivadas por defecto hasta un experimento pareado en LoCoMo
+EPI_DIVERSITY = os.getenv("EPI_DIVERSITY", "off").strip().lower()   # off | dia (≤ EPI_PER_DAY episodios por día)
+EPI_PER_DAY = _int("EPI_PER_DAY", "3")
+EPI_DIVERSITY_POOL = _int("EPI_DIVERSITY_POOL", "3")    # se buscan EPI_LOOKUP_K × este factor candidatos
+LTM_SECOND_PASS = _flag("LTM_SECOND_PASS", "0")         # 2.ª pasada: 1 llamada LLM con lo recuperado
 
 
 def _episode_limits(lookup: int, prompt: int) -> tuple[int, int]:  # [PARCHE18]

@@ -47,7 +47,7 @@ def _norm(text: str) -> str:
     return re.sub(r"[\W_]+", " ", str(text).lower()).strip()
 
 
-def clean(question: str, raw: Any, n: int | None = None) -> list[str]:
+def clean(question: str, raw: Any, n: int | None = None, min_n: int = 2) -> list[str]:
     """Valida la salida del LLM: lista de cadenas, sin vacías, sin duplicados ni copias de la pregunta."""
     n = n or max_subqueries()
     items = raw.get("consultas") if isinstance(raw, dict) else raw
@@ -66,7 +66,7 @@ def clean(question: str, raw: Any, n: int | None = None) -> list[str]:
         out.append(s)
         if len(out) >= n:
             break
-    return out if len(out) >= 2 else []   # una sola subconsulta no es una descomposición
+    return out if len(out) >= min_n else []   # una sola subconsulta no es una descomposición  [PARCHE20] min_n
 
 
 def decompose(llm: Any, question: str) -> tuple[list[str], float]:
