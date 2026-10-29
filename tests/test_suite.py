@@ -653,6 +653,71 @@ class TestDirectTopK(unittest.TestCase):  # [PARCHE13]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestDecomposition(unittest.TestCase):  # [PARCHE19]
+    def test_clean_validates_llm_output(self):
+        import descomponer as d
+        q = "¿Qué deportes practican Ana y Luis?"
+        self.assertEqual(d.clean(q, {"consultas": ["deportes de Ana", "deportes de Luis"]}),
+                         ["deportes de Ana", "deportes de Luis"])
+        self.assertEqual(d.clean(q, {"consultas": []}), [])
+        self.assertEqual(d.clean(q, {"consultas": ["solo una consulta"]}), [])     # 1 no es descomponer
+        self.assertEqual(d.clean(q, {"consultas": [q, "deportes de Ana"]}), [])    # copia de la pregunta
+        self.assertEqual(d.clean(q, {"consultas": ["a", "", "deportes de Ana", "Deportes de Ana!",
+                                                   "deportes de Luis", "x3", "otra", "y otra más"]}, n=3),
+                         ["deportes de Ana", "deportes de Luis", "otra"])
+        self.assertEqual(d.clean(q, "basura"), [])
+
+    def test_decompose_never_raises(self):
+        import descomponer as d
+        from types import SimpleNamespace
+
+        def boom(*a, **k):
+            raise RuntimeError("caído")
+        self.assertEqual(d.decompose(SimpleNamespace(ask_json=boom), "¿Algo?")[0], [])
+        self.assertEqual(d.decompose(None, "¿Algo?")[0], [])
+
+    def test_fuse_many_keeps_original_first_and_max_sim(self):
+        import descomponer as d
+        a = [{"id": "x", "sim": 0.5}, {"id": "y", "sim": 0.4}]
+        b = [{"id": "z", "sim": 0.9}, {"id": "y", "sim": 0.8}]
+        out = d.fuse_many([a, b], 10)
+        self.assertEqual([c["id"] for c in out], ["y", "x", "z"])
+        self.assertEqual(out[0]["sim"], 0.8)
+        self.assertEqual(a[1]["sim"], 0.4)   # no modifica las listas de entrada
+        self.assertEqual([c["id"] for c in d.fuse_many([a], 1)], ["x"])
+        self.assertEqual(d.fuse_many([[], []], 5), [])
+
+    def test_off_by_default_and_recall_unchanged_without_subqueries(self):
+        self.assertEqual(C.LTM_DECOMPOSE, os.environ.get("LTM_DECOMPOSE", "0") == "1")
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_dec_"))
+        try:
+            llm = MockLLM()
+            tree = MemoryTree(tmp / "ltm", llm)
+            tree.emb = vectores.EmbeddingService(tree, embedder=MockEmbedder())
+            facts = ["El hurón Pimienta abre la nevera.", "La cerámica de Nora se cuece en Burgos.",
+                     "El torneo de ajedrez regional terminó en abril."]
+            for f in facts:
+                llm.register(f, "Notas")
+                tree.store(f, 7)
+            tree.emb.sync()
+            q = "¿Qué hace el hurón Pimienta?"
+            a = tree.recall(q, reinforce=False, synthesize=False)
+            b = tree.recall(q, reinforce=False, synthesize=False, extra_queries=[])
+            self.assertEqual(a["candidates"], b["candidates"])
+            c = tree.recall(q, reinforce=False, synthesize=False,
+                            extra_queries=["cerámica de Nora en Burgos", "torneo de ajedrez regional"])
+            self.assertGreater(len(set(c["candidates"])), len(set(a["candidates"])) - 1)
+            tree.log_episode("user", "Nora: mi cerámica se cuece en Burgos", 1.0)
+            tree.log_episode("user", "Lucas: el torneo de ajedrez acabó", 2.0)
+            e0 = tree.search_episodes("cerámica Burgos", 5)
+            e1 = tree.search_episodes("cerámica Burgos", 5, extra_queries=["torneo ajedrez", "ajedrez acabó"])
+            self.assertTrue(any("ajedrez" in e["text"] for e in e1))
+            self.assertFalse(any("ajedrez" in e["text"] for e in e0))
+            tree.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
     def test_append_without_rebuild_and_delete_rebuilds(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))

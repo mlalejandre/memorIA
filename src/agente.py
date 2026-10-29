@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import config as C
+import descomponer  # [PARCHE19]
 from cartuchos import CartridgeManager
 from corto_plazo import ShortTermMemory, fmt_ts, role_label
 from largo_plazo import MemoryTree, MemLLM
@@ -208,7 +209,7 @@ class Agent:
         except Exception as exc:
             self.log(f"[Backup] fallo: {exc}")
 
-    def _query_ltm_in_process(self, question: str) -> dict[str, Any]:
+    def _query_ltm_in_process(self, question: str, subqueries: list[str] | None = None) -> dict[str, Any]:
         t0 = time.perf_counter()
         self._pause_ltm()
         prev_task = self.state["ltm_task"]
@@ -219,7 +220,9 @@ class Agent:
 
         def _query_single_tree(tree_obj: Any, q: str) -> dict[str, Any]:
             if hasattr(tree_obj, "recall"):
-                return tree_obj.recall(q, tree_obj is self.ltm, synthesize=not bool(getattr(C, 'LTM_DIRECT_RETRIEVAL', False)))
+                kw = {"extra_queries": subqueries} if subqueries else {}  # [PARCHE19]
+                return tree_obj.recall(q, tree_obj is self.ltm,
+                                       synthesize=not bool(getattr(C, 'LTM_DIRECT_RETRIEVAL', False)), **kw)
             elif hasattr(tree_obj, "ask"):
                 return tree_obj.ask(q)
             return {"found": False, "answer": ""}
@@ -325,12 +328,13 @@ class Agent:
             except Exception as exc:
                 self.log(f"[Episódica] {exc}")
 
-    def _episodes_for(self, text: str) -> list[dict[str, Any]]:
+    def _episodes_for(self, text: str, subqueries: list[str] | None = None) -> list[dict[str, Any]]:
         fn = getattr(self.ltm, "search_episodes", None)
         if not fn:
             return []
         try:
-            return fn(text, getattr(C, "EPI_LOOKUP_K", 22)) or []  # [PARCHE17]
+            kw = {"extra_queries": subqueries} if subqueries else {}  # [PARCHE19]
+            return fn(text, getattr(C, "EPI_LOOKUP_K", 22), **kw) or []  # [PARCHE17]
         except Exception as exc:
             self.log(f"[Episódica] {exc}")
             return []
@@ -345,6 +349,19 @@ class Agent:
                 self.log(f"[Episódica] {n} mensajes antiguos importados a la memoria episódica.")
         except Exception as exc:
             self.log(f"[Episódica] importación fallida: {exc}")
+
+    def _subqueries(self, text: str) -> list[str]:
+        """[PARCHE19] Subconsultas para preguntas que reúnen varios datos (LTM_DECOMPOSE=1)."""
+        if not descomponer.enabled():
+            return []
+        self._pause_ltm()
+        try:
+            subs, secs = descomponer.decompose(getattr(self.ltm, "llm", None), text)
+        finally:
+            self._resume_ltm()
+        if subs:
+            self.log(f"[Descomposición] {len(subs)} subconsultas en {secs:.1f}s: " + " | ".join(subs))
+        return subs
 
     def _ingest(self, text: str, origin: str) -> None:
         if hasattr(self.ltm, "ingest_async"):
@@ -363,7 +380,8 @@ class Agent:
             try:
                 t0 = time.perf_counter()
                 self._set("RECEPCION", store="run")
-                epi_hits = self._episodes_for(text)
+                subs = self._subqueries(text)  # [PARCHE19]
+                epi_hits = self._episodes_for(text, subs)
                 self.stm.add("user", text)
                 self._episode("user", text)
                 self._ingest(text, "mensaje del usuario")
@@ -371,7 +389,7 @@ class Agent:
                 self._set("CONSULTA", stm_lookup="run", ltm_query="run")
                 with ThreadPoolExecutor(max_workers=2) as ex:
                     f_stm = ex.submit(self.stm.recall, text)
-                    f_ltm = ex.submit(self._query_ltm_in_process, text)
+                    f_ltm = ex.submit(self._query_ltm_in_process, text, subs)
                     stm_ctx = f_stm.result()
                     ltm_res = f_ltm.result()
 

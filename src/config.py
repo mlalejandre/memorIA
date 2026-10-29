@@ -191,6 +191,11 @@ EPI_LOOKUP_K = _int("EPI_LOOKUP_K", "22")   # episodios literales candidatos par
 # (los repetidos con el corto plazo se descartan). [PARCHE17] 20 por defecto: en LoCoMo, correctas 61,9 % → 70,2 %
 # (p < 0,001; multi-salto 35,5 → 47,5 %) sin subir la invención (7,0 → 5,8 %, p = 0,46). Coste: prompt ≈ +1.800 tokens.
 EPI_PROMPT_K = _int("EPI_PROMPT_K", "20")
+# [PARCHE19] descomposición de la pregunta en subconsultas (1 llamada LLM al servidor de memoria larga) y fusión
+# RRF de lo recuperado con cada una, SIN subir el presupuesto (LTM_DIRECT_TOP_K hechos, EPI_PROMPT_K episodios).
+# 0 por defecto hasta que un experimento pareado en LoCoMo lo justifique (ver src/descomponer.py).
+LTM_DECOMPOSE = _flag("LTM_DECOMPOSE", "0")
+LTM_DECOMPOSE_MAX = _int("LTM_DECOMPOSE_MAX", "3")
 
 
 def _episode_limits(lookup: int, prompt: int) -> tuple[int, int]:  # [PARCHE18]

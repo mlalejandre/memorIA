@@ -13,6 +13,10 @@ try:
     import vectores as _vectores
 except ImportError:
     _vectores = None
+try:
+    import descomponer as _decomp  # [PARCHE19]
+except ImportError:
+    _decomp = None
 
 
 class ExplorerMixin:
@@ -292,9 +296,13 @@ class ExplorerMixin:
             return None
         return self.episodes.add(role, text, ts)
 
-    def search_episodes(self, question: str, limit: int = 8) -> list[dict[str, Any]]:
+    def search_episodes(self, question: str, limit: int = 8,
+                        extra_queries: list[str] | None = None) -> list[dict[str, Any]]:
         if getattr(self, "episodes", None) is None:
             return []
+        if extra_queries and _decomp is not None:  # [PARCHE19] una búsqueda por subconsulta y fusión RRF
+            lists = [self.search_episodes(q, limit) for q in [question, *extra_queries]]
+            return _decomp.fuse_many(lists, limit)
         lex = self.episodes.search(question, limit)
         emb = getattr(self, "emb", None)
         sem: list[dict[str, Any]] = []

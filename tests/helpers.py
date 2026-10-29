@@ -107,6 +107,11 @@ class MockLLM:
             if a and a == b:
                 return {"relation": "supersedes", "confidence": 0.95, "reason": "mismo atributo"}
             return {"relation": "complementary", "confidence": 0.9, "reason": "atributos distintos"}
+        if "Decide si basta con una búsqueda" in user:  # [PARCHE19] descomposición: parte por " and " / " y "
+            m = re.search(r"Pregunta: (.*)", user)
+            q = (m.group(1) if m else "").strip().rstrip("?")
+            parts = [p.strip() for p in re.split(r"\band\b|\by\b", q) if len(p.strip()) >= 3]
+            return {"consultas": parts if len(parts) >= 2 else []}
         if "Dato a memorizar:" in user:
             m = re.search(r"Dato a memorizar: (.*)", user)
             dom = self.domain_of.get(_key(m.group(1)), "General") if m else "General"

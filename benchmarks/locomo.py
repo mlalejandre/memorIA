@@ -33,6 +33,8 @@
 #   HMEM_LOCOMO_REINGEST 1 = descarta la caché y reingiere
 #   HMEM_LOCOMO_DATA     ruta a un locomo10.json local (sin descarga)
 #   HMEM_LOCOMO_DIR      carpeta de caché (defecto experiment/locomo_cache)
+#   HMEM_LOCOMO_DESCOMP  1 = diagnóstico de descomposición de preguntas (techo de cobertura; ver [PARCHE19])
+#   HMEM_DESCOMP_FRAC    fracción de preguntas de un salto / temporales que entran en ese diagnóstico (def. 0.12)
 #   HMEM_E2E_WORKERS     respuestas/juicios en paralelo (defecto 2)
 from __future__ import annotations
 
@@ -51,6 +53,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config as C
+import descomponer  # [PARCHE19]
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "locomo-v1"
@@ -312,6 +315,119 @@ def depth_bucket(r: int | None) -> str:
         "21-50" if r <= 50 else "51-200")
 
 
+# ---- [PARCHE19] descomposición de la pregunta: caché de subconsultas, oráculo y diagnóstico de techo
+DECOMP_DIAG_CATS = (1, 3)   # multi-salto e inferencia: todas sus preguntas entran en el diagnóstico
+
+
+class DecompCache:
+    """Subconsultas por pregunta, en disco: el diagnóstico y el experimento usan EXACTAMENTE las mismas.
+    Se invalida si cambian el prompt, el máximo de subconsultas o el modelo."""
+
+    def __init__(self, base: Path, tag: str) -> None:
+        h = hashlib.sha256()
+        for part in (descomponer.DECOMP_SYSTEM, descomponer.DECOMP_PROMPT, str(descomponer.max_subqueries()), tag):
+            h.update(str(part).encode("utf-8") + b"\0")
+        self.path = Path(base) / f"descomp_{h.hexdigest()[:10]}.json"
+        try:
+            self.data: dict[str, Any] = json.loads(self.path.read_text(encoding="utf-8"))
+        except Exception:
+            self.data = {}
+        self.new = self.hits = 0
+
+    def get(self, llm: Any, question: str) -> tuple[list[str], float]:
+        hit = self.data.get(question)
+        if isinstance(hit, dict):
+            self.hits += 1
+            return list(hit.get("subs") or []), float(hit.get("t") or 0.0)
+        subs, secs = descomponer.decompose(llm, question)
+        self.data[question] = {"subs": subs, "t": round(secs, 3)}
+        self.new += 1
+        if self.new % 25 == 0:
+            self.save()
+        return subs, secs
+
+    def save(self) -> None:
+        try:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = self.path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self.data, ensure_ascii=False, indent=0), encoding="utf-8")
+            os.replace(tmp, self.path)
+        except OSError:
+            pass
+
+
+def oracle_subs(gold: str, n: int = 4) -> list[str]:
+    """Techo: buscar con la respuesta de referencia (y sus partes si es una lista). Nunca existe en producción."""
+    gold = str(gold or "").strip()
+    if not gold:
+        return []
+    parts = [p.strip(" .") for p in re.split(r",|;|\band\b|\by\b", gold) if len(p.strip(" .")) >= 3]
+    out: list[str] = []
+    for p in [gold] + (parts if len(parts) > 1 else []):
+        if p.lower() not in {o.lower() for o in out}:
+            out.append(p)
+    return out[:n]
+
+
+def diag_pick(sid: str, question: str, cat: int, frac: float) -> bool:
+    """Multi-salto e inferencia siempre; de un salto y temporales, una fracción determinista (por hash)."""
+    if cat in DECOMP_DIAG_CATS:
+        return True
+    if cat not in POS_CATS:
+        return False
+    h = int(hashlib.sha1(f"{sid}|{question}".encode("utf-8")).hexdigest()[:8], 16)
+    return (h % 10000) < frac * 10000
+
+
+def decomp_summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """rows: {cat, cov_b, cov_d, cov_o, ctx_b, ctx_d, ctx_o, n_subs, t}. b = actual · d = descomposición · o = oráculo."""
+    full = lambda x: x >= 0.999
+
+    def group(sel: list[dict[str, Any]]) -> dict[str, Any]:
+        n = len(sel)
+        if not n:
+            return {"n": 0}
+        g: dict[str, Any] = {"n": n, "descompone": sum(1 for r in sel if r["n_subs"]) / n}
+        for v in "bdo":
+            g[f"cov_{v}"] = sum(r[f"cov_{v}"] for r in sel) / n
+            g[f"full_{v}"] = sum(1 for r in sel if full(r[f"cov_{v}"])) / n
+            g[f"ctx_{v}"] = sum(1 for r in sel if r[f"ctx_{v}"]) / n
+        for v in "do":
+            better = sum(1 for r in sel if full(r[f"cov_{v}"]) and not full(r["cov_b"]))
+            worse = sum(1 for r in sel if full(r["cov_b"]) and not full(r[f"cov_{v}"]))
+            g[f"mejora_{v}"], g[f"empeora_{v}"], g[f"p_full_{v}"] = better, worse, sign_p(worse, better)
+        return g
+
+    ts = sorted(r["t"] for r in rows if r.get("n_subs") is not None)
+    return {"n": len(rows), "cats": {str(c): group([r for r in rows if r["cat"] == c]) for c in POS_CATS},
+            "simples": group([r for r in rows if r["cat"] in (2, 4)]),
+            "t_p50": percentile(ts, 50), "t_p95": percentile(ts, 95)}
+
+
+DECOMP_RULE = ("GO al experimento si, en multi-salto, la cobertura COMPLETA de la evidencia sube ≥ 5 pp con la "
+               "descomposición (mismo presupuesto K+E) con p < 0,05, y en las preguntas de un salto y temporales la "
+               "cobertura media no baja más de 2 pp. Si no: NO-GO; si además el oráculo tampoco sube ≥ 5 pp, la "
+               "recuperación no es el cuello de botella del multi-salto.")
+
+
+def decomp_decision(s: dict[str, Any]) -> tuple[str, str]:
+    """Regla de decisión del parche 19, fijada ANTES de medir (ver DECOMP_RULE)."""
+    mh, simple = s["cats"].get("1") or {"n": 0}, s.get("simples") or {"n": 0}
+    if not mh.get("n"):
+        return "SIN DATOS", "no hay preguntas multi-salto en el diagnóstico"
+    gain = mh["full_d"] - mh["full_b"]
+    o_gain = mh["full_o"] - mh["full_b"]
+    drop = (simple["cov_b"] - simple["cov_d"]) if simple.get("n") else 0.0
+    why = (f"multi-salto completa {mh['full_b'] * 100:.1f} → {mh['full_d'] * 100:.1f} % ({gain * 100:+.1f} pp, "
+           f"p={mh['p_full_d']:.3g}) · oráculo {mh['full_o'] * 100:.1f} % ({o_gain * 100:+.1f} pp) · "
+           f"un salto+temporal cobertura media {-drop * 100:+.1f} pp")
+    if gain >= 0.05 and mh["p_full_d"] < 0.05 and drop <= 0.02:
+        return "GO", why
+    if o_gain < 0.05:
+        return "NO-GO (techo bajo)", why
+    return "NO-GO (la descomposición no alcanza el techo)", why
+
+
 def evidence_bucket(in_ctx: bool, in_cand: bool, has_cell: bool) -> str:
     """Dónde se perdió la evidencia de una respuesta fallida."""
     if in_ctx:
@@ -515,11 +631,14 @@ def ingest(tree: Any, sample: dict, size: int, state: dict[str, Any],
 # 4. RECUPERACIÓN, PROMPT Y JUECES
 # ==============================================================================
 
-def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]) -> dict[str, Any]:
+def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str],
+             subs: list[str] | None = None, t_decomp: float = 0.0) -> dict[str, Any]:
+    # [PARCHE19] subs = subconsultas (descomposición u oráculo); t_decomp = segundos de la llamada que las generó
+    kw = {"extra_queries": list(subs)} if subs else {}
     t0 = time.perf_counter()
-    r = tree.recall(question, reinforce=False, synthesize=False)
+    r = tree.recall(question, reinforce=False, synthesize=False, **kw)
     t1 = time.perf_counter()
-    epi = tree.search_episodes(question, int(getattr(C, "EPI_LOOKUP_K", 6))) or []
+    epi = tree.search_episodes(question, int(getattr(C, "EPI_LOOKUP_K", 6)), **kw) or []
     t2 = time.perf_counter()
     cell_dia, epi_dia = state["cell_dia"], state["epi_dia"]
     hit = lambda ids: any(evidence & set(cell_dia.get(str(i), [])) for i in ids)
@@ -541,7 +660,8 @@ def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]
         "coverage": coverage(evidence, injected, epi[:n_epi], cell_dia, epi_dia),
         "epi_in": epi[:n_epi],   # [PARCHE16] los episodios que muestra _build_system (EPI_PROMPT_K)
         "lines": fact_lines(r.get("answer", "")) if r.get("found") else [],
-        "r": r, "epi": epi, "ms": (t2 - t0) * 1000, "ms_recall": (t1 - t0) * 1000,
+        "r": r, "epi": epi, "ms": (t2 - t0 + t_decomp) * 1000, "ms_recall": (t1 - t0) * 1000,
+        "ms_descomp": t_decomp * 1000, "subs": list(subs or []),   # [PARCHE19]
         "state": "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme"),
         "in_ctx": bool(evidence) and (hit(injected) or hit_epi(epi[:n_epi])),
         "in_cand": bool(evidence) and (hit(r.get("candidates") or []) or hit_epi(epi)),
@@ -589,6 +709,49 @@ def _vote(chat: Any, system: str, user: str, key: str) -> bool | None:
     return (2 * sum(votes) > len(votes)) if votes else None
 
 
+def report_decomp(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dict[str, Any]:
+    """[PARCHE19] Imprime el diagnóstico de descomposición, lo guarda en JSON y aplica la regla de decisión."""
+    s = decomp_summary(rows)
+    print(f"\n   DESCOMPOSICIÓN DE LA PREGUNTA · techo de cobertura sin LLM de respuesta ({len(rows)} preguntas con "
+          f"evidencia; mismo presupuesto: {getattr(C, 'LTM_DIRECT_TOP_K', 10)} hechos + "
+          f"{getattr(C, 'EPI_PROMPT_K', 20)} episodios)")
+    print(f"   llamada de descomposición: P50 {s['t_p50'] * 1000:.0f} ms · P95 {s['t_p95'] * 1000:.0f} ms")
+    print(f"   {'categoría':<14}{'n':>5}{'descomp.':>9}   {'cobertura media  act/desc/orác':>32}   "
+          f"{'completa  act/desc/orác':>27}   {'desc vs act (+/−, p)':>22}")
+    for name, g in [(CATS[c], s["cats"][str(c)]) for c in POS_CATS] + [("un salto+temp.", s["simples"])]:
+        if not g.get("n"):
+            continue
+        print(f"   {name:<14}{g['n']:>5}{pct(g['descompone']):>9}   "
+              f"{pct(g['cov_b']):>10}{pct(g['cov_d']):>8}{pct(g['cov_o']):>8}      "
+              f"{pct(g['full_b']):>8}{pct(g['full_d']):>8}{pct(g['full_o']):>8}   "
+              f"+{g['mejora_d']}/−{g['empeora_d']} p={g['p_full_d']:.3g}")
+    verdict, why = decomp_decision(s)
+    print(f"   REGLA (fijada antes de medir): {DECOMP_RULE}")
+    print(f"   ⇒ {verdict}: {why}")
+    ex = [r for r in rows if r["cat"] == 1 and r["n_subs"]][:6]
+    for r in ex:
+        print(f"     «{r['q'][:60]}» → " + " | ".join(x[:40] for x in r["subs"])
+              + f"   (completa {r['cov_b']:.2f} → {r['cov_d']:.2f})")
+    mh = s["cats"].get("1", {})
+    if mh.get("n"):
+        R.add(S, "Descomposición · multi-salto cobertura completa (act → desc / oráculo)", True,
+              f"{pct(mh['full_b'])} → {pct(mh['full_d'])} / {pct(mh['full_o'])}", "(diagnóstico)", "info",
+              "descomponer.py", f"p={mh['p_full_d']:.3g} · descompone {pct(mh['descompone'])}")
+    R.add(S, "Descomposición · decisión", True, verdict, "(regla previa)", "info", "descomponer.py", why)
+    out = Path(base) / f"descomp_resumen_{time.strftime('%Y%m%d_%H%M%S')}.json"
+    try:
+        out.write_text(json.dumps({"fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "regla": DECOMP_RULE,
+                                   "decision": verdict, "motivo": why, "resumen": s,
+                                   "config": {"K": getattr(C, "LTM_DIRECT_TOP_K", 10),
+                                              "E": getattr(C, "EPI_PROMPT_K", 20),
+                                              "max_subconsultas": descomponer.max_subqueries()},
+                                   "filas": rows}, ensure_ascii=False, indent=1), encoding="utf-8")
+        print(f"   detalle del diagnóstico: {out}")
+    except OSError:
+        pass
+    return s
+
+
 # ==============================================================================
 # 5. SUITE
 # ==============================================================================
@@ -624,6 +787,16 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     only_retrieval = os.getenv("HMEM_LOCOMO_SOLO_RECUPERACION", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     depth_rows: list[dict[str, Any]] = []
     all_facts: list[str] = []
+    # [PARCHE19] descomposición: en producción si LTM_DECOMPOSE=1; diagnóstico de techo con HMEM_LOCOMO_DESCOMP=1
+    decomp_on = bool(getattr(C, "LTM_DECOMPOSE", False))
+    decomp_diag = os.getenv("HMEM_LOCOMO_DESCOMP", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+    decomp_frac = min(1.0, max(0.0, float(os.getenv("HMEM_DESCOMP_FRAC", "0.12"))))
+    dcache = DecompCache(base, "|".join(models)) if (decomp_on or decomp_diag) else None
+    diag_rows: list[dict[str, Any]] = []
+    if dcache is not None:
+        print(f"   descomposición: {'ACTIVA en la recuperación' if decomp_on else 'inactiva en la recuperación'}"
+              f"{' · diagnóstico de techo' if decomp_diag else ''} · máx. {descomponer.max_subqueries()} "
+              f"subconsultas · caché {dcache.path.name} ({len(dcache.data)} preguntas)")
     for sample in samples:
         sid = str(sample["sample_id"])
         key = cache_key(sid, size, models)
@@ -673,7 +846,18 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         for q in qa:
             cat = int(q.get("category", 0))
             ev = norm_evidence(q.get("evidence", []))
-            ret = retrieve(tree, str(q["question"]), state, ev)
+            subs, t_d = dcache.get(tree.llm, str(q["question"])) if decomp_on else ([], 0.0)   # [PARCHE19]
+            ret = retrieve(tree, str(q["question"]), state, ev, subs, t_d)
+            if decomp_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):   # [PARCHE19]
+                d_subs, d_t = (subs, t_d) if decomp_on else dcache.get(tree.llm, str(q["question"]))
+                rb = retrieve(tree, str(q["question"]), state, ev) if decomp_on else ret
+                rd = retrieve(tree, str(q["question"]), state, ev, d_subs, d_t) if d_subs else rb
+                o_subs = oracle_subs(str(q.get("answer", "")))
+                ro = retrieve(tree, str(q["question"]), state, ev, o_subs) if o_subs else rb
+                diag_rows.append({"sid": sid, "q": str(q["question"]), "cat": cat, "gold": str(q.get("answer", "")),
+                                  "subs": d_subs, "n_subs": len(d_subs), "t": round(d_t, 3),
+                                  "cov_b": rb["coverage"], "cov_d": rd["coverage"], "cov_o": ro["coverage"],
+                                  "ctx_b": rb["in_ctx"], "ctx_d": rd["in_ctx"], "ctx_o": ro["in_ctx"]})
             spk_a, spk_b = sample["conversation"]["speaker_a"], sample["conversation"]["speaker_b"]
             subj = subject_of(str(q["question"]), spk_a, spk_b)
             other = (spk_b if subj == spk_a else spk_a) if subj else None
@@ -821,6 +1005,19 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                       "info", "ltm/retrieval.py (K) · config.EPI_LOOKUP_K (E)")
         print(f"   (actual: K{getattr(C, 'LTM_DIRECT_TOP_K', 10)}+E{getattr(C, 'EPI_PROMPT_K', 20)} · 'completa' = todas "
               "las evidencias de la pregunta alcanzadas)")  # [PARCHE17]
+    if dcache is not None:   # [PARCHE19]
+        dcache.save()
+        print(f"\n   subconsultas: {dcache.new} generadas ahora · {dcache.hits} reutilizadas de la caché")
+    if decomp_on:
+        dt = sorted(it["ret"]["ms_descomp"] for it in items)
+        n_dec = sum(1 for it in items if it["ret"]["subs"])
+        print(f"   descomposición en producción: {n_dec}/{len(items)} preguntas descompuestas · llamada LLM "
+              f"P50 {percentile(dt, 50):.0f} ms / P95 {percentile(dt, 95):.0f} ms (incluida en el P95 de recuperación)")
+        R.add(S, "Descomposición: preguntas descompuestas / llamada LLM P95", True,
+              f"{n_dec}/{len(items)} · {percentile(dt, 95):.0f} ms", "(observación)", "info", "descomponer.py")
+    if decomp_diag and diag_rows:
+        report_decomp(diag_rows, R, S, base)
+
     if only_retrieval:
         print("   (HMEM_LOCOMO_SOLO_RECUPERACION=1: no se generan respuestas ni se juzga)")
         return
@@ -1002,6 +1199,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "evid_prompt": it["ret"]["in_ctx"], "evid_cand": it["ret"]["in_cand"],
                                      "causa": it.get("bucket"), "ms": round(it["ret"]["ms"], 1),
                                      "t_respuesta": round(it.get("t_answer") or 0.0, 2),  # [PARCHE17]
+                                     "subconsultas": it["ret"].get("subs") or [],  # [PARCHE19]
                                      # [PARCHE11] contexto completo para auditar a mano
                                      "sujeto": it["subj"], "hablante_evid": it["ev_spk"],  # [PARCHE12]
                                      "identidad": it["ph"], "top_sim": it["ret"]["top_sim"],

@@ -1,5 +1,10 @@
 # Changelog
 
+<!-- [PARCHE19] -->
+## Unreleased
+- Question decomposition (`LTM_DECOMPOSE`, default `0`, experimental): one LLM call rewrites a question that needs several facts into 2-3 single-fact search queries; facts and episodes retrieved for each are fused with RRF under the same budget (`LTM_DIRECT_TOP_K` facts, `EPI_PROMPT_K` episodes). Simple questions get no subqueries, so retrieval is unchanged.
+- LoCoMo decomposition diagnostic (`HMEM_LOCOMO_DESCOMP=1`, retrieval only with `HMEM_LOCOMO_SOLO_RECUPERACION=1`): evidence coverage per category for current retrieval, decomposition and an oracle that searches with the reference answer, with a decision rule fixed before measuring. Subqueries are cached so the later experiment uses exactly the same ones.
+
 <!-- [PARCHE15] -->
 ## 0.3.0a3 (2026-10-29)
 LoCoMo: correct 61.9 % → 70.2 % · multi-hop 35.5 % → 47.5 % · invents 7.0 % → 5.8 %. Own corpus unaffected (its tests use no episodes).

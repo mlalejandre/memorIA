@@ -146,6 +146,57 @@ class TestLocomoDepth(unittest.TestCase):  # [PARCHE15]
                          ["1-6", "7-10", "11-20", "21-50", "51-200", "—"])
 
 
+class TestLocomoDecomposition(unittest.TestCase):  # [PARCHE19]
+    def test_oracle_subs(self):
+        self.assertEqual(locomo.oracle_subs("Pimienta"), ["Pimienta"])
+        self.assertEqual(locomo.oracle_subs("pottery, camping and painting"),
+                         ["pottery, camping and painting", "pottery", "camping", "painting"])
+        self.assertEqual(locomo.oracle_subs(""), [])
+
+    def test_diag_pick(self):
+        self.assertTrue(locomo.diag_pick("c", "q", 1, 0.0))
+        self.assertTrue(locomo.diag_pick("c", "q", 3, 0.0))
+        self.assertFalse(locomo.diag_pick("c", "q", 4, 0.0))
+        self.assertTrue(locomo.diag_pick("c", "q", 4, 1.0))
+        self.assertFalse(locomo.diag_pick("c", "q", 5, 1.0))
+        picks = sum(locomo.diag_pick("c", f"q{i}", 2, 0.25) for i in range(2000))
+        self.assertTrue(400 < picks < 600)
+
+    def _rows(self, n_mh, b_full, d_full, simple_drop=0.0):
+        rows = [{"cat": 1, "n_subs": 2, "t": 0.5, "cov_b": 1.0 if i < b_full else 0.5,
+                 "cov_d": 1.0 if i < d_full else 0.5, "cov_o": 1.0 if i < d_full else 0.5,
+                 "ctx_b": True, "ctx_d": True, "ctx_o": True} for i in range(n_mh)]
+        rows += [{"cat": 4, "n_subs": 0, "t": 0.3, "cov_b": 1.0, "cov_d": 1.0 - simple_drop, "cov_o": 1.0,
+                  "ctx_b": True, "ctx_d": True, "ctx_o": True} for _ in range(50)]
+        return rows
+
+    def test_decision_rule(self):
+        s = locomo.decomp_summary(self._rows(200, 40, 70))
+        self.assertAlmostEqual(s["cats"]["1"]["full_b"], 0.2)
+        self.assertEqual((s["cats"]["1"]["mejora_d"], s["cats"]["1"]["empeora_d"]), (30, 0))
+        self.assertEqual(locomo.decomp_decision(s)[0], "GO")
+        self.assertEqual(locomo.decomp_decision(locomo.decomp_summary(self._rows(200, 40, 45)))[0],
+                         "NO-GO (techo bajo)")
+        self.assertEqual(locomo.decomp_decision(locomo.decomp_summary(self._rows(200, 40, 70, 0.05)))[0][:5],
+                         "NO-GO")
+        self.assertEqual(locomo.decomp_decision(locomo.decomp_summary([]))[0], "SIN DATOS")
+
+    def test_cache_roundtrip(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_dc_"))
+        try:
+            llm = MockLLM()
+            c = locomo.DecompCache(tmp, "t")
+            subs, _ = c.get(llm, "What did Ana and Luis cook?")
+            self.assertEqual(len(subs), 2)
+            c.save()
+            c2 = locomo.DecompCache(tmp, "t")
+            self.assertEqual(c2.get(None, "What did Ana and Luis cook?")[0], subs)
+            self.assertEqual((c2.hits, c2.new), (1, 0))
+            self.assertNotEqual(locomo.DecompCache(tmp, "otro").path, c.path)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 class TestLocomoIngestion(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="hmem_locomo_"))

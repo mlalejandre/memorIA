@@ -30,7 +30,7 @@ hmem-cli = "main:main"
 [tool.setuptools]
 package-dir = { "" = "src", "interfaz" = "interfaz" }
 packages = ["interfaz", "ltm"]
-py-modules = ["agente", "bucle", "cartuchos", "config", "corto_plazo", "episodica", "largo_plazo", "llm", "main", "navegacion", "rerank", "servidor", "vectores"]  # [PARCHE4]
+py-modules = ["agente", "bucle", "cartuchos", "config", "corto_plazo", "descomponer", "episodica", "largo_plazo", "llm", "main", "navegacion", "rerank", "servidor", "vectores"]  # [PARCHE4]
 
 [tool.setuptools.package-data]
 interfaz = ["index.html"]

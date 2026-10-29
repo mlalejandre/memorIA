@@ -12,6 +12,10 @@ try:
     import navegacion as _nav
 except ImportError:
     _nav = None
+try:
+    import descomponer as _decomp  # [PARCHE19]
+except ImportError:
+    _decomp = None
 
 
 class RetrievalMixin:
@@ -210,7 +214,8 @@ class RetrievalMixin:
         found, _ = self._classify_relevance(question, candidates, sim_of, exact_hits)
         return found
 
-    def recall(self, question: str, reinforce: bool = True, navigate: bool = True, synthesize: bool | None = None) -> dict[str, Any]:
+    def recall(self, question: str, reinforce: bool = True, navigate: bool = True, synthesize: bool | None = None,
+               extra_queries: list[str] | None = None) -> dict[str, Any]:
         started_calls = self.llm.calls
         question = (question or "").strip()
 
@@ -232,6 +237,15 @@ class RetrievalMixin:
                 emb_hits = emb.search_cells(question, include_history=include_history)
             except Exception:
                 emb_hits = []
+            # [PARCHE19] subconsultas: una búsqueda por cada una y fusión RRF con la de la pregunta original
+            if extra_queries and _decomp is not None:
+                lists = [emb_hits]
+                for sub in extra_queries:
+                    try:
+                        lists.append(emb.search_cells(sub, include_history=include_history))
+                    except Exception:
+                        continue
+                emb_hits = _decomp.fuse_many(lists, max(int(getattr(_cfg, "EMB_TOP_K", 25)), len(emb_hits)))
         need_exact = (not emb_hits) or rrf_weight("exacta") > 0
         need_lex = (not emb_hits) or rrf_weight("léxica") > 0 or bool(_cfg.MEM_RECALL_EXPAND)
         exact_hits = self._exact_search(question, include_history=include_history) if need_exact else []
