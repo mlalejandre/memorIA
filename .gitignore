@@ -108,3 +108,7 @@ dist/
 # <<< hierarchical-memory (parche.py) <<<
 resultados_parches/
 experiment/locomo_cache/
+# limpieza v0.3.0a3
+/parche*.py
+/limpieza.py
+/proyecto_completo.txt
