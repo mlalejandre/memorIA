@@ -29,17 +29,28 @@ class LLM:
         """finish_reason de la última respuesta de ESTE hilo ('stop', 'length'...)."""
         return getattr(self._local, "finish", None)
 
-    def chat(self, messages: list[dict[str, str]], max_tokens: int | None = None,
-             temperature: float | None = None) -> str:
-        payload: dict[str, Any] = {
+    @property
+    def last_usage(self) -> dict[str, Any]:
+        """[PARCHE23] Uso de la última respuesta de ESTE hilo: completion_tokens, prompt_tokens, reasoning_chars."""
+        return dict(getattr(self._local, "usage", None) or {})
+
+    def _payload(self, messages: list[dict[str, str]], max_tokens: int | None, temperature: float | None,
+                 stream: bool, thinking: bool | None = None, cache_prompt: bool | None = None) -> dict[str, Any]:
+        """[PARCHE23] thinking y cache_prompt por llamada (None = lo que diga la configuración)."""
+        return {
             "model": self.model,
             "temperature": C.ANSWER_TEMPERATURE if temperature is None else temperature,
             "max_tokens": max_tokens or C.ANSWER_MAX_TOKENS,
-            "stream": False,
-            "cache_prompt": True,
-            "chat_template_kwargs": {"enable_thinking": C.THINKING},
+            "stream": stream,
+            "cache_prompt": bool(getattr(C, "LLM_CACHE_PROMPT", True)) if cache_prompt is None else bool(cache_prompt),
+            "chat_template_kwargs": {"enable_thinking": bool(C.THINKING if thinking is None else thinking)},
             "messages": messages,
         }
+
+    def chat(self, messages: list[dict[str, str]], max_tokens: int | None = None,
+             temperature: float | None = None, thinking: bool | None = None,
+             cache_prompt: bool | None = None) -> str:
+        payload = self._payload(messages, max_tokens, temperature, False, thinking, cache_prompt)
         body = json.dumps(payload).encode("utf-8")
         data: Any = None
         last_exc: Exception | None = None
@@ -68,6 +79,9 @@ class LLM:
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(f"Respuesta LLM inesperada: {str(data)[:300]}") from exc
         self._local.finish = choice.get("finish_reason") if isinstance(choice, dict) else None
+        usage = data.get("usage") if isinstance(data, dict) else None
+        self._local.usage = {**(usage if isinstance(usage, dict) else {}),
+                             "reasoning_chars": len(msg.get("reasoning_content") or "")}
         text = (msg.get("content") or "").strip()
         if "</think>" in text:
             text = text.split("</think>")[-1].strip()
@@ -97,18 +111,11 @@ class LLM:
                 yield delta
 
     def chat_stream(self, messages: list[dict[str, str]], max_tokens: int | None = None,
-                    temperature: float | None = None):
+                    temperature: float | None = None, thinking: bool | None = None,
+                    cache_prompt: bool | None = None):
         """Como chat(), pero devuelve el texto a medida que llega (generador de str).
         Descarta un bloque <think>...</think> inicial si el modelo lo emite."""
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "temperature": C.ANSWER_TEMPERATURE if temperature is None else temperature,
-            "max_tokens": max_tokens or C.ANSWER_MAX_TOKENS,
-            "stream": True,
-            "cache_prompt": True,
-            "chat_template_kwargs": {"enable_thinking": C.THINKING},
-            "messages": messages,
-        }
+        payload = self._payload(messages, max_tokens, temperature, True, thinking, cache_prompt)
         req = urllib.request.Request(
             self.url, data=json.dumps(payload).encode("utf-8"),
             headers={"Content-Type": "application/json", "Accept": "text/event-stream"}, method="POST",

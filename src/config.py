@@ -121,6 +121,9 @@ LLM_BASE_URL = LLM_LTM_URL
 LLM_MODEL = REMOTE_MODEL_ALIAS
 REQUEST_TIMEOUT_S = _int("REQUEST_TIMEOUT_S", "240")
 THINKING = _flag("THINKING", "0")
+# [PARCHE23] reutilizar en el servidor la caché KV del prefijo común del prompt (más rápido; con 2 slots las
+# respuestas con T=0 pueden variar algo entre ejecuciones). El diagnóstico de determinismo decide si conviene 0.
+LLM_CACHE_PROMPT = _flag("LLM_CACHE_PROMPT", "1")
 
 # ============================================================
 # MEMORIA A CORTO PLAZO (STM)

@@ -347,3 +347,71 @@ class TestLocomoIngestion(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class _R:   # [PARCHE23] informe mínimo para las pruebas
+    def __init__(self) -> None:
+        self.rows = []
+
+    def add(self, suite, name, ok, value, *a, **k) -> None:
+        self.rows.append((name, value))
+
+
+class TestThinkingAndDeterminism(unittest.TestCase):  # [PARCHE23]
+    def test_determinism_choice_rule(self):
+        mk = lambda w, cp, same, rate: {"nombre": locomo.det_name(w, cp), "workers": w, "cache_prompt": cp,
+                                        "iguales": same, "ritmo": rate}
+        rows = [mk(2, True, 0.35, 40.0), mk(1, True, 0.90, 22.0), mk(2, False, 0.97, 30.0), mk(1, False, 1.0, 18.0)]
+        c = locomo.determinism_choice(rows)
+        self.assertEqual((c["workers"], c["cache_prompt"], c["determinista"]), (2, False, True))  # la más rápida ≥ 95 %
+        c = locomo.determinism_choice(rows[:2])
+        self.assertEqual((c["workers"], c["determinista"]), (1, False))        # ninguna llega: la más determinista
+        self.assertIsNone(locomo.determinism_choice([])["elegida"])
+
+    def test_probe_verdict(self):
+        self.assertTrue(locomo.probe_verdict({"reasoning_chars": 300, "completion_tokens": 90}, {"completion_tokens": 5}))
+        self.assertTrue(locomo.probe_verdict({"reasoning_chars": 0, "completion_tokens": 400}, {"completion_tokens": 6}))
+        self.assertFalse(locomo.probe_verdict({"reasoning_chars": 0, "completion_tokens": 8}, {"completion_tokens": 6}))
+        self.assertFalse(locomo.probe_verdict({"error": "URLError"}, {"completion_tokens": 6}))
+
+    def test_thinking_probe_and_determinism_with_fake_llm(self):
+        class Fake:
+            def __init__(self):
+                self.last_usage = {}
+                self.kw = []
+
+            def chat(self, messages, max_tokens=None, temperature=None, thinking=None, cache_prompt=None):
+                self.kw.append((thinking, cache_prompt))
+                self.last_usage = {"completion_tokens": 300 if thinking else 4,
+                                   "reasoning_chars": 900 if thinking else 0}
+                return "215" if messages[-1]["content"] == locomo.THINK_PROBE else "eco: " + messages[-1]["content"]
+
+        f = Fake()
+        pr = locomo.thinking_probe(f, 2048)
+        self.assertTrue(pr["available"])
+        self.assertFalse(pr["always_on"])
+        self.assertEqual(pr["on"]["answer"], "215")
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_det_"))
+        try:
+            R = _R()
+            items = [{"system": "s", "q": f"p{i}"} for i in range(5)]
+            out = locomo.run_determinism(f, items, 0.0, R, "locomo", tmp, {"id": "x"})
+            self.assertEqual(len(out["filas"]), len(locomo.DET_CONFIGS))
+            self.assertTrue(all(r["iguales"] == 1.0 for r in out["filas"]))
+            self.assertTrue(out["decision"]["determinista"])                   # todas deterministas: la más rápida
+            self.assertIn((None, False), f.kw)                                  # cache_prompt llega por llamada
+            self.assertTrue(list(tmp.glob("determinismo_*.json")))
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_llm_payload_overrides(self):
+        import config as C
+        from llm import LLM
+        llm = LLM(base_url="http://127.0.0.1:9/v1", model="m")
+        p = llm._payload([{"role": "user", "content": "x"}], 10, 0.0, False)
+        self.assertEqual(p["chat_template_kwargs"]["enable_thinking"], bool(C.THINKING))
+        self.assertEqual(p["cache_prompt"], bool(C.LLM_CACHE_PROMPT))
+        p = llm._payload([{"role": "user", "content": "x"}], 10, 0.0, True, thinking=True, cache_prompt=False)
+        self.assertEqual((p["chat_template_kwargs"]["enable_thinking"], p["cache_prompt"], p["stream"]),
+                         (True, False, True))
+        self.assertEqual(llm.last_usage, {})
+

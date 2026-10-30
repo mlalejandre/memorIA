@@ -43,6 +43,12 @@
 #   HMEM_LOCOMO_NOCACHE  1 = ni lee ni escribe la caché de respuestas/juicios (para medir el ruido del servidor)
 #   HMEM_FIXED_NOW       «fecha actual» del prompt (defecto 29/10/2026 12:00): sin ella el prompt cambia cada minuto
 #   HMEM_E2E_WORKERS     respuestas/juicios en paralelo (defecto 2)
+#   [PARCHE23] razonamiento y determinismo del agente:
+#   HMEM_ANSWER_THINK    1 = el agente responde con el modo de pensamiento del modelo (solo el benchmark; antes se
+#                        comprueba con una sonda que el servidor lo active por petición)
+#   HMEM_THINK_MAX_TOKENS  límite de tokens (pensamiento + respuesta) con HMEM_ANSWER_THINK=1 (defecto 4096)
+#   HMEM_LOCOMO_DETERMINISMO  1 = diagnóstico: cada pregunta se responde 2 veces en 4 configuraciones (1 o 2 en
+#                        paralelo · caché de prompt sí/no) y se mide cuántas respuestas salen idénticas; sin juez
 from __future__ import annotations
 
 import concurrent.futures
@@ -894,6 +900,106 @@ def judge_once(llm: Any, system: str, user: str, field: str, tries: int = 2) -> 
     return None
 
 
+# ---- [PARCHE23] determinismo del agente y modo de pensamiento
+DET_CONFIGS = ((2, True), (1, True), (2, False), (1, False))   # (respuestas en paralelo, cache_prompt)
+THINK_PROBE = ("Un tren sale a las 9:40 y llega a las 13:15. ¿Cuántos minutos dura el viaje? "
+               "Responde solo con el número.")
+
+
+def det_name(workers: int, cache_prompt: bool) -> str:
+    return f"{workers} en paralelo · caché de prompt {'sí' if cache_prompt else 'no'}"
+
+
+def determinism_choice(rows: list[dict[str, Any]], min_same: float = 0.95) -> dict[str, Any]:
+    """Regla fijada ANTES de medir: de las configuraciones con ≥ 95 % de respuestas idénticas entre dos pasadas, la
+    de mayor ritmo (respuestas por minuto). Si ninguna llega, la más determinista, y se avisa."""
+    if not rows:
+        return {"elegida": None, "determinista": False, "motivo": "sin datos"}
+    good = [r for r in rows if r["iguales"] >= min_same]
+    if good:
+        best = max(good, key=lambda r: r["ritmo"])
+        why = f"la más rápida de las que repiten ≥ {min_same:.0%} de las respuestas"
+    else:
+        best = max(rows, key=lambda r: (r["iguales"], r["ritmo"]))
+        why = f"ninguna repite ≥ {min_same:.0%}: la más determinista"
+    return {"elegida": best["nombre"], "workers": best["workers"], "cache_prompt": best["cache_prompt"],
+            "determinista": bool(good), "iguales": best["iguales"], "ritmo": best["ritmo"], "motivo": why}
+
+
+def run_determinism(chat: Any, items: list[dict[str, Any]], temp: float, R: Any, S: str, base: Path,
+                    fp: dict[str, Any]) -> dict[str, Any]:
+    """Cada pregunta 2 veces por configuración (sin caché del banco ni juez): ¿salen respuestas idénticas?"""
+    rows: list[dict[str, Any]] = []
+    print(f"\n   DETERMINISMO DEL AGENTE: {len(items)} preguntas × 2 pasadas × {len(DET_CONFIGS)} configuraciones "
+          f"(T={temp:g})")
+    for workers, cp in DET_CONFIGS:
+        times: list[float] = []
+
+        def one(it: dict[str, Any], _cp: bool = cp) -> str:
+            t_a = time.perf_counter()
+            try:
+                return chat.chat([{"role": "system", "content": it["system"]}, {"role": "user", "content": it["q"]}],
+                                 max_tokens=350, temperature=temp, cache_prompt=_cp)
+            except Exception as exc:
+                return f"[error LLM: {type(exc).__name__}]"
+            finally:
+                times.append(time.perf_counter() - t_a)
+
+        t0 = time.time()
+        passes = []
+        for _ in range(2):
+            with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
+                passes.append(list(ex.map(one, items)))
+        el = max(time.time() - t0, 1e-6)
+        same = sum(1 for a, b in zip(*passes) if a == b and not a.startswith("[error")) / max(1, len(items))
+        errors = sum(a.startswith("[error") for p in passes for a in p)
+        row = {"nombre": det_name(workers, cp), "workers": workers, "cache_prompt": cp, "n": len(items),
+               "iguales": same, "ritmo": 2 * len(items) / (el / 60), "t_p50": percentile(times, 50),
+               "t_p95": percentile(times, 95), "errores": errors, "min": el / 60}
+        rows.append(row)
+        print(f"   · {row['nombre']:<36} idénticas {pct(same):>6} · {row['ritmo']:5.1f} respuestas/min · "
+              f"mediana {row['t_p50']:.2f} s · errores {errors}", flush=True)
+        R.add(S, f"Determinismo · {row['nombre']}", True, f"{pct(same)} idénticas · {row['ritmo']:.1f}/min",
+              "(diagnóstico)", "info", "llm.py · cache_prompt / HMEM_E2E_WORKERS")
+    choice = determinism_choice(rows)
+    print(f"   ⇒ configuración elegida: {choice['elegida']} ({choice['motivo']})")
+    R.add(S, "Determinismo · elegida", True, str(choice["elegida"]), "(decisión)", "info", "", choice["motivo"])
+    out = {"fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "agente": fp, "temp": temp, "filas": rows, "decision": choice}
+    try:
+        (base / f"determinismo_{time.strftime('%Y%m%d_%H%M%S')}.json").write_text(
+            json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
+    except OSError:
+        pass
+    return out
+
+
+def probe_verdict(on: dict[str, Any], off: dict[str, Any]) -> bool:
+    """¿El servidor piensa cuando se le pide? Razonamiento separado, o muchos más tokens que sin pensar."""
+    if not on or on.get("error"):
+        return False
+    if (on.get("reasoning_chars") or 0) > 0:
+        return True
+    a, b = on.get("completion_tokens"), off.get("completion_tokens") if off else None
+    return bool(a and b and a >= 3 * b + 40)
+
+
+def thinking_probe(llm: Any, max_tokens: int) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for name, flag in (("on", True), ("off", False)):
+        t0 = time.perf_counter()
+        try:
+            txt = llm.chat([{"role": "user", "content": THINK_PROBE}], max_tokens=max_tokens, temperature=0.0,
+                           thinking=flag)
+            u = llm.last_usage if hasattr(llm, "last_usage") else {}
+            out[name] = {"answer": str(txt)[:80], "s": round(time.perf_counter() - t0, 2),
+                         "completion_tokens": u.get("completion_tokens"), "reasoning_chars": u.get("reasoning_chars", 0)}
+        except Exception as exc:
+            out[name] = {"error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    out["available"] = probe_verdict(out.get("on", {}), out.get("off", {}))
+    out["always_on"] = (out.get("off", {}).get("reasoning_chars") or 0) > 0
+    return out
+
+
 def _vote(chat: Any, system: str, user: str, key: str) -> bool | None:
     def one() -> bool | None:
         try:
@@ -1336,8 +1442,28 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     votes = max(1, int(os.getenv("HMEM_JUDGE_VOTES", "1")))
     j_workers = max(1, int(os.getenv("HMEM_JUDGE_WORKERS", "2")))
     nocache = os.getenv("HMEM_LOCOMO_NOCACHE", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+    truthy = {"1", "true", "yes", "si", "sí"}
+    think = os.getenv("HMEM_ANSWER_THINK", "").strip().lower() in truthy   # [PARCHE23]
+    mt = max(512, int(os.getenv("HMEM_THINK_MAX_TOKENS", "4096"))) if think else 350
+    if os.getenv("HMEM_LOCOMO_DETERMINISMO", "").strip().lower() in truthy:   # [PARCHE23]
+        run_determinism(chat, items, temp, R, S, base, fp_a)
+        return
+    if think:
+        pr = thinking_probe(chat, mt)
+        txt = (f"con pensamiento {pr['on'].get('completion_tokens', '?')} tokens en {pr['on'].get('s', '?')} s "
+               f"(razonamiento {pr['on'].get('reasoning_chars', 0)} car.) · sin pensamiento "
+               f"{pr['off'].get('completion_tokens', '?')} tokens · respuesta «{pr['on'].get('answer', pr['on'].get('error', ''))}»")
+        print(f"\n   SONDA DE PENSAMIENTO: {'disponible' if pr['available'] else 'NO disponible'} · {txt}")
+        R.add(S, "Pensamiento del agente (sonda)", True, "disponible" if pr["available"] else "NO disponible",
+              "(requisito)", "info", "llm.py · chat_template_kwargs.enable_thinking", txt)
+        if not pr["available"]:
+            print("   ⚠ el servidor no piensa al pedírselo (¿arrancado sin --jinja, o con --reasoning-budget 0?): "
+                  "no se generan respuestas")
+            return
+        if pr["always_on"]:
+            print("   ⚠ el servidor piensa también SIN pedírselo: la base podría no ser «sin pensamiento»")
     bc = BenchCache(base / "banco.sqlite")
-    print(f"\n   agente: {fp_text(fp_a)} · T={temp:g}")
+    print(f"\n   agente: {fp_text(fp_a)} · T={temp:g}" + (f" · PENSAMIENTO (máx. {mt} tokens)" if think else ""))
     print(f"   juez:   {fp_text(fp_j)} · {votes} voto(s) · caché {'DESACTIVADA' if nocache else 'activa'} · "
           f"fecha del prompt {now_str()}")
     rnd = random.Random(10)
@@ -1347,7 +1473,8 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
 
     def answer(job: tuple[dict, str]) -> str:
         it, system = job
-        key = BenchCache.key("a1", fp_a["id"], temp, 350, system, it["q"])
+        key = (BenchCache.key("a1", fp_a["id"], temp, mt, system, it["q"], "think") if think else
+               BenchCache.key("a1", fp_a["id"], temp, 350, system, it["q"]))   # [PARCHE23] sin pensar: misma clave
         hit = None if nocache else bc.get_answer(key)
         if hit is not None:
             it["t_answer"], it["cached"] = hit[1], True
@@ -1355,11 +1482,14 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         t_a = time.perf_counter()   # [PARCHE17] tiempo de respuesta del agente (LLM incluido)
         try:
             a = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
-                          max_tokens=350, temperature=temp)
+                          max_tokens=mt, temperature=temp, **({"thinking": True} if think else {}))
         except Exception as exc:
             it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
             return f"[error LLM: {type(exc).__name__}]"
         it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
+        if think:   # [PARCHE23] coste del pensamiento
+            it["tokens"] = chat.last_usage.get("completion_tokens")
+            it["cut"] = chat.last_finish_reason == "length"
         if not nocache:
             bc.put_answer(key, a, it["t_answer"])
         return a
@@ -1408,9 +1538,11 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             fj.append(fut)
             if k % step == 0:
                 progress(k, sum(x.done() for x in fj))
-        for k, f in enumerate(concurrent.futures.as_completed(fj), 1):
+        pending = [x for x in fj if not x.done()]   # [PARCHE23] solo los juicios que aún faltan (antes contaba todos)
+        done0 = n_jobs - len(pending)
+        for k, f in enumerate(concurrent.futures.as_completed(pending), 1):
             if k % step == 0:
-                progress(n_jobs, k)
+                progress(n_jobs, done0 + k)
     for it in done_items:   # la callback puede no haber corrido aún al salir: se asegura el veredicto
         it.setdefault("v", None)
     bc.close()
@@ -1438,6 +1570,16 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         R.add(S, "Tiempo de respuesta del agente (mediana / P95)", True,
               f"{percentile(t_ans, 50):.2f} s / {percentile(t_ans, 95):.2f} s", "(observación)", "info",
               "agente.py · _build_system (tamaño del prompt)", f"{workers} en paralelo")
+    if think:   # [PARCHE23]
+        toks = [it["tokens"] for it in main_items if it.get("tokens")]
+        n_cut = sum(1 for it in main_items if it.get("cut"))
+        if toks:
+            print(f"   pensamiento: {percentile(toks, 50):.0f} tokens por respuesta (mediana) · P95 "
+                  f"{percentile(toks, 95):.0f} · cortadas por el límite ({mt}) {n_cut}")
+            R.add(S, "Pensamiento: tokens por respuesta (mediana / P95)", True,
+                  f"{percentile(toks, 50):.0f} / {percentile(toks, 95):.0f}", "(observación)", "info", "")
+        R.add(S, "Pensamiento: respuestas cortadas por el límite", True, f"{n_cut}/{len(main_items)}",
+              "(observación)", "info", "HMEM_THINK_MAX_TOKENS")
     a_len = sorted(len(str(it.get("a", ""))) for it in main_items)   # [PARCHE22]
     if a_len:
         print(f"   longitud de la respuesta: mediana {percentile(a_len, 50):.0f} caracteres · P95 {percentile(a_len, 95):.0f}")
@@ -1582,6 +1724,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "evid_prompt": it["ret"]["in_ctx"], "evid_cand": it["ret"]["in_cand"],
                                      "causa": it.get("bucket"), "ms": round(it["ret"]["ms"], 1),
                                      "t_respuesta": round(it.get("t_answer") or 0.0, 2),  # [PARCHE17]
+                                     "tokens": it.get("tokens"), "cortada": bool(it.get("cut")),  # [PARCHE23]
                                      "subconsultas": it["ret"].get("subs") or [],  # [PARCHE19]
                                      "consultas_2a": it["ret"].get("subs_ref") or [],  # [PARCHE20]
                                      "sesiones_prompt": it["ret"].get("sessions"),
@@ -1596,6 +1739,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         out.with_suffix(".meta.json").write_text(json.dumps({   # [PARCHE22] huella de la medición
             "fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "agente": fp_a, "juez": fp_j, "temp": temp, "votos": votes,
             "nocache": nocache, "fixed_now": now_str(), "answer_direct": bool(getattr(C, "ANSWER_DIRECT", False)),
+            "think": think, "max_tokens": mt, "cache_prompt": bool(getattr(C, "LLM_CACHE_PROMPT", True)),  # [PARCHE23]
             "config": {k: str(getattr(C, k, "")) for k in ("LTM_DIRECT_TOP_K", "EPI_PROMPT_K", "EPI_LOOKUP_K",
                                                           "RETRIEVAL_PROFILE", "RERANK_MODE", "LTM_DECOMPOSE",
                                                           "EPI_DIVERSITY", "LTM_SECOND_PASS")}},

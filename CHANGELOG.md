@@ -2,6 +2,11 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE23] -->
+- Patch 22 result: `ANSWER_DIRECT` rejected. Correct 69.5 → 69.6 % (69 better, 68 worse, p = 1.0), invention 5.4 → 6.7 % (p = 0.35); answers were 28 % shorter and 7 % faster. Long failing answers were a symptom of missing knowledge, not the cause. The new benchmark cut verdict noise from 7.2 % to 2.7 %: retrieval and judge are reproducible; only the agent's wording varies at temperature 0 (35 % of answers identical across runs).
+- Per-call `thinking` and `cache_prompt` in the LLM client, `LLM_CACHE_PROMPT` (default `1`, unchanged behaviour) and the token usage of the last answer.
+- LoCoMo agent determinism diagnostic (`HMEM_LOCOMO_DETERMINISMO=1`): each question answered twice under 1 or 2 parallel requests, with and without server prompt cache; picks the fastest configuration that repeats ≥ 95 % of answers.
+- LoCoMo thinking mode (`HMEM_ANSWER_THINK=1`, benchmark only): a probe first checks that the server thinks when asked; reports thinking tokens and answers cut by the limit (`HMEM_THINK_MAX_TOKENS`). Judge progress after the answers finish now counts only pending judgments.
 <!-- [PARCHE22] -->
 - Fast, reproducible LoCoMo benchmark: agent answers at temperature 0 and a single deterministic judge vote, both cached in `experiment/locomo_cache/banco.sqlite` under a key that covers the server fingerprint, the system prompt and the question, so unchanged questions are not recomputed and an interrupted run loses nothing. The judge runs on the idle long-term-memory server in parallel with the answers, with one progress line and an ETA. The prompt date is frozen (`HMEM_FIXED_NOW`). Each result gets a `.meta.json` with the server fingerprint (`/props`), and comparisons warn when the base was measured differently. Paired comparison per category.
 - `ANSWER_DIRECT` (default `0`, experimental): the answer starts with one sentence that answers exactly what was asked.
