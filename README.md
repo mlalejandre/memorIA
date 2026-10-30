@@ -182,6 +182,7 @@ Everything is an environment variable or a line in `.env` (see [`.env.example`](
 | `RETRIEVAL_PROFILE` | `embeddings` | `embeddings` = vector channel only (best measured); `completo` / `personalizado` = full RRF fusion using your `RRF_W_*` |
 | `RERANK_MODE` | `off` | `llm` = LLM judge re-orders the top 8 and decides relevance; `cross` = bge-reranker-v2-m3 via `llama-server --reranking` (`RERANK_URL`) |
 | `LTM_DIRECT_TOP_K` | `10` | facts injected into the prompt in direct retrieval (measured on LoCoMo: 10 beats 6) |
+| `ANSWER_DIRECT` | `0` | experimental: the answer starts with one sentence that answers exactly what was asked |
 | `EPI_DIVERSITY` / `EPI_PER_DAY` | `off` / `3` | experimental: at most N prompt episodes per day, from a deeper candidate pool |
 | `LTM_SECOND_PASS` | `0` | experimental: one LLM call turns what the first search found into queries for what is missing (same budget) |
 | `LTM_DECOMPOSE` | `0` | experimental: split questions that need several facts into subqueries (1 extra LLM call) and fuse what each retrieves, same budget |

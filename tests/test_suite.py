@@ -774,6 +774,29 @@ class TestRefine(unittest.TestCase):  # [PARCHE20]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestDirectAnswerAndFixedNow(unittest.TestCase):  # [PARCHE22]
+    def test_direct_rule_only_when_enabled(self):
+        from agente import Agent, DIRECT_RULE
+        with mock.patch.object(C, "ANSWER_DIRECT", False):
+            self.assertNotIn(DIRECT_RULE, Agent._build_system(None, {}, {"found": False}, None))
+        with mock.patch.object(C, "ANSWER_DIRECT", True):
+            self.assertIn(DIRECT_RULE, Agent._build_system(None, {}, {"found": False}, None))
+        self.assertEqual(C.ANSWER_DIRECT, os.environ.get("ANSWER_DIRECT", "0") == "1")
+
+    def test_fixed_now_makes_prompt_stable(self):
+        from agente import Agent
+        with mock.patch.dict(os.environ, {"HMEM_FIXED_NOW": "01/02/2024 10:00"}):
+            s1 = Agent._build_system(None, {}, {"found": False}, None)
+            self.assertIn("Fecha actual: 01/02/2024 10:00", s1)
+            self.assertEqual(s1, Agent._build_system(None, {}, {"found": False}, None))
+
+    def test_interface_imports_new_modules_from_repo(self):
+        import importlib
+        import interfaz
+        importlib.reload(interfaz)
+        self.assertIn(str(ROOT / "src"), sys.path)
+
+
 class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
     def test_append_without_rebuild_and_delete_rebuilds(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))

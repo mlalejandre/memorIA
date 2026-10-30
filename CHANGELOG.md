@@ -2,6 +2,12 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE22] -->
+- Fast, reproducible LoCoMo benchmark: agent answers at temperature 0 and a single deterministic judge vote, both cached in `experiment/locomo_cache/banco.sqlite` under a key that covers the server fingerprint, the system prompt and the question, so unchanged questions are not recomputed and an interrupted run loses nothing. The judge runs on the idle long-term-memory server in parallel with the answers, with one progress line and an ETA. The prompt date is frozen (`HMEM_FIXED_NOW`). Each result gets a `.meta.json` with the server fingerprint (`/props`), and comparisons warn when the base was measured differently. Paired comparison per category.
+- `ANSWER_DIRECT` (default `0`, experimental): the answer starts with one sentence that answers exactly what was asked.
+- The web console always imports from the repository's `src/`, so modules added after `pip install -e .` no longer fail.
+- `experiment/LEDGER.md`: scoreboard and history of every experiment and its decision. `experiment/audit_locomo_p16.md`: manual audit of the patch 16 run.
+- Patch 21 (temporal anchoring at ingestion) was measured and rejected: temporal 68.8 → 70.4 % (p = 0.61), invention 5.8 → 8.1 % (p = 0.14). An A/A run showed 7.2 % of verdicts flip with nothing changed.
 <!-- [PARCHE20] -->
 - Episode diversity (`EPI_DIVERSITY=dia`, default `off`, experimental): episodes are searched deeper (`EPI_DIVERSITY_POOL`× `EPI_LOOKUP_K`) and at most `EPI_PER_DAY` per day reach the prompt, so turns from one session cannot fill the whole budget.
 - Second retrieval pass (`LTM_SECOND_PASS`, default `0`, experimental): one LLM call reads what the first pass found and writes 1-3 concrete queries for what may be missing; results are fused with RRF under the same budget.

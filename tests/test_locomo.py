@@ -234,6 +234,49 @@ class TestLocomoRefine(unittest.TestCase):  # [PARCHE20]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+class TestBenchCache(unittest.TestCase):  # [PARCHE22]
+    def test_roundtrip_and_counters(self):
+        tmp = Path(tempfile.mkdtemp(prefix="hmem_bc_"))
+        try:
+            bc = locomo.BenchCache(tmp / "b.sqlite")
+            k = locomo.BenchCache.key("a1", "fp", 0.0, 350, "sistema", "pregunta")
+            self.assertNotEqual(k, locomo.BenchCache.key("a1", "fp", 0.0, 350, "sistema2", "pregunta"))
+            self.assertIsNone(bc.get_answer(k))
+            bc.put_answer(k, "respuesta", 1.5)
+            self.assertEqual(bc.get_answer(k), ("respuesta", 1.5))
+            self.assertIsNone(bc.get_verdict("x"))
+            bc.put_verdict("x", False)
+            self.assertEqual(bc.get_verdict("x"), (False,))   # un False en caché no es «sin dato»
+            self.assertEqual((bc.hits, bc.new), ({"a": 1, "j": 1}, {"a": 1, "j": 1}))
+            bc.close()
+            bc2 = locomo.BenchCache(tmp / "b.sqlite")         # persiste entre ejecuciones
+            self.assertEqual(bc2.get_answer(k)[0], "respuesta")
+            bc2.close()
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+    def test_fingerprint_unreachable_server(self):
+        fp = locomo.server_fingerprint("http://127.0.0.1:9/v1")
+        self.assertIn("error", fp)
+        self.assertEqual(len(fp["id"]), 12)
+        self.assertIn("slots", locomo.fp_text(fp))
+
+    def test_judge_once_is_deterministic_and_robust(self):
+        from types import SimpleNamespace
+        calls = []
+
+        def chat(messages, max_tokens=None, temperature=None):
+            calls.append(temperature)
+            return 'Veredicto: {"correcta": true}'
+        self.assertTrue(locomo.judge_once(SimpleNamespace(chat=chat), "s", "u", "correcta"))
+        self.assertEqual(calls, [0.0])
+
+        def bad(*a, **k):
+            raise RuntimeError("caído")
+        self.assertIsNone(locomo.judge_once(SimpleNamespace(chat=bad), "s", "u", "correcta"))
+        self.assertIsNone(locomo.judge_once(SimpleNamespace(chat=lambda *a, **k: "sin json"), "s", "u", "correcta"))
+
+
 class TestLocomoIngestion(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="hmem_locomo_"))

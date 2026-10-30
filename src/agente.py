@@ -1,6 +1,7 @@
 # Agente con doble memoria (STM + LTM) consultadas en paralelo.
 from __future__ import annotations
 
+import os
 import platform
 import re
 import threading
@@ -34,6 +35,21 @@ BASE_PROMPT = (
     "una expresión de tiempo relativa (ayer, la semana pasada, el mes que viene), calcula la fecha a partir de la "
     "fecha de ese recuerdo, no de la actual. Fecha actual: {now}."
 )
+
+# [PARCHE22] respuesta directa (ANSWER_DIRECT=1, experimental). Auditoría del parche 16: las respuestas fallidas miden
+# 593 caracteres de mediana frente a 332 las acertadas, y 46 fallos contenían la respuesta correcta entre otras
+# alternativas. Primero el dato, luego (si hace falta) la aclaración: más preciso y más rápido de generar.
+DIRECT_RULE = (
+    "Formato de la respuesta: empieza con una frase que responda exactamente a lo que se pregunta (el dato, la fecha, "
+    "la cantidad o la lista pedida). Después, solo si hace falta, añade una aclaración breve o la fuente. No enumeres "
+    "alternativas que no responden a la pregunta. Si el dato no consta o pertenece a otra persona, esa es la primera "
+    "frase.")
+
+
+def now_str() -> str:
+    """[PARCHE22] Fecha actual del prompt. HMEM_FIXED_NOW la congela (benchmark reproducible y cacheable)."""
+    return os.getenv("HMEM_FIXED_NOW", "").strip() or time.strftime("%d/%m/%Y %H:%M")
+
 
 TRUNCATED_NOTE = "\n\n[⚠️ Respuesta truncada por el límite de tokens (STM_ANSWER_MAX_TOKENS).]"
 
@@ -285,7 +301,9 @@ class Agent:
 
     def _build_system(self, stm: dict[str, Any], ltm: dict[str, Any],
                       epi: list[dict[str, Any]] | None = None) -> str:
-        parts = [BASE_PROMPT.format(now=time.strftime("%d/%m/%Y %H:%M"))]
+        parts = [BASE_PROMPT.format(now=now_str())]  # [PARCHE22]
+        if getattr(C, "ANSWER_DIRECT", False):
+            parts.append(DIRECT_RULE)
         if stm.get("summaries"):
             parts.append("\n## Resumen de la conversación previa (memoria corta)")
             for s in stm["summaries"]:

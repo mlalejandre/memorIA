@@ -36,6 +36,12 @@
 #   HMEM_LOCOMO_DESCOMP  1 = diagnóstico de descomposición de preguntas (techo de cobertura; ver [PARCHE19])
 #   HMEM_DESCOMP_FRAC    fracción de preguntas de un salto / temporales que entran en ese diagnóstico (def. 0.12)
 #   HMEM_LOCOMO_REFINAR  1 = diagnóstico de diversidad por día y 2.ª pasada (techo de cobertura; ver [PARCHE20])
+#   [PARCHE22] banco rápido y reproducible:
+#   HMEM_ANSWER_TEMP     temperatura de las respuestas del agente (defecto 0: determinista y cacheable)
+#   HMEM_JUDGE_URL       servidor del juez (defecto: el de la memoria larga, ocioso mientras el agente responde)
+#   HMEM_JUDGE_WORKERS   juicios en paralelo (defecto 2) · HMEM_JUDGE_VOTES votos por juicio (defecto 1, T=0)
+#   HMEM_LOCOMO_NOCACHE  1 = ni lee ni escribe la caché de respuestas/juicios (para medir el ruido del servidor)
+#   HMEM_FIXED_NOW       «fecha actual» del prompt (defecto 29/10/2026 12:00): sin ella el prompt cambia cada minuto
 #   HMEM_E2E_WORKERS     respuestas/juicios en paralelo (defecto 2)
 from __future__ import annotations
 
@@ -792,6 +798,102 @@ LOCOMO_NEG_JUDGE = (
     'Devuelve SOLO JSON: {"inventa": true} o {"inventa": false}.')
 
 
+# ---- [PARCHE22] banco rápido: caché persistente, huella del servidor y juez determinista
+class BenchCache:
+    """Respuestas y veredictos en SQLite (experiment/locomo_cache/banco.sqlite). La clave incluye TODO lo que
+    determina el resultado (huella del servidor, temperatura, prompt de sistema, pregunta...): si el prompt de una
+    pregunta no cambia, su respuesta y su veredicto se reutilizan; si se corta la ejecución, no se pierde nada."""
+
+    def __init__(self, path: Path) -> None:
+        import sqlite3
+        import threading
+        self.lock = threading.Lock()
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        self.conn = sqlite3.connect(str(path), check_same_thread=False, timeout=30.0)
+        self.conn.execute("PRAGMA journal_mode = WAL")
+        self.conn.execute("CREATE TABLE IF NOT EXISTS answers (key TEXT PRIMARY KEY, answer TEXT, t REAL, ts REAL)")
+        self.conn.execute("CREATE TABLE IF NOT EXISTS verdicts (key TEXT PRIMARY KEY, verdict INTEGER, ts REAL)")
+        self.conn.commit()
+        self.hits = {"a": 0, "j": 0}
+        self.new = {"a": 0, "j": 0}
+
+    @staticmethod
+    def key(*parts: Any) -> str:
+        h = hashlib.sha256()
+        for p in parts:
+            h.update(str(p).encode("utf-8") + b"\0")
+        return h.hexdigest()
+
+    def get_answer(self, key: str) -> tuple[str, float] | None:
+        with self.lock:
+            r = self.conn.execute("SELECT answer, t FROM answers WHERE key = ?", (key,)).fetchone()
+        if r:
+            self.hits["a"] += 1
+        return (r[0], float(r[1] or 0.0)) if r else None
+
+    def put_answer(self, key: str, answer: str, t: float) -> None:
+        with self.lock:
+            self.conn.execute("INSERT OR REPLACE INTO answers VALUES (?, ?, ?, ?)", (key, answer, t, time.time()))
+            self.conn.commit()
+            self.new["a"] += 1
+
+    def get_verdict(self, key: str) -> tuple[bool] | None:
+        with self.lock:
+            r = self.conn.execute("SELECT verdict FROM verdicts WHERE key = ?", (key,)).fetchone()
+        if r:
+            self.hits["j"] += 1
+        return (bool(r[0]),) if r else None
+
+    def put_verdict(self, key: str, verdict: bool) -> None:
+        with self.lock:
+            self.conn.execute("INSERT OR REPLACE INTO verdicts VALUES (?, ?, ?)", (key, int(bool(verdict)), time.time()))
+            self.conn.commit()
+            self.new["j"] += 1
+
+    def close(self) -> None:
+        with self.lock:
+            self.conn.close()
+
+
+def server_fingerprint(base_url: str) -> dict[str, Any]:
+    """Modelo, compilación, slots y contexto de un llama-server (GET /props). Si cambia el modelo o la compilación,
+    cambian las respuestas: la huella entra en las claves de la caché y se compara con la de la base."""
+    root = str(base_url).rstrip("/")
+    root = root[:-3] if root.endswith("/v1") else root
+    info: dict[str, Any] = {"url": root}
+    try:
+        with urllib.request.urlopen(root + "/props", timeout=5) as resp:
+            d = json.loads(resp.read().decode("utf-8", errors="replace"))
+        gen = d.get("default_generation_settings") or {}
+        info.update({"model": d.get("model_path") or d.get("model_alias") or "?", "build": d.get("build_info", "?"),
+                     "slots": d.get("total_slots"), "n_ctx": gen.get("n_ctx")})
+    except Exception as exc:
+        info.update({"model": str(getattr(C, "REMOTE_MODEL_ALIAS", "?")), "build": "?", "error": type(exc).__name__})
+    info["id"] = hashlib.sha256(f"{info.get('model')}|{info.get('build')}".encode("utf-8")).hexdigest()[:12]
+    return info
+
+
+def fp_text(fp: dict[str, Any]) -> str:
+    model = str(fp.get("model", "?")).rsplit("/", 1)[-1]
+    extra = f" · {fp['error']}" if fp.get("error") else ""
+    return f"{model} · {fp.get('build', '?')} · slots {fp.get('slots', '?')} · ctx {fp.get('n_ctx', '?')}{extra}"
+
+
+def judge_once(llm: Any, system: str, user: str, field: str, tries: int = 2) -> bool | None:
+    """Juez determinista (temperatura 0, un voto): mismo veredicto para la misma respuesta, cacheable."""
+    from ltm.common import extract_json
+    for _ in range(tries):
+        try:
+            txt = llm.chat([{"role": "system", "content": system}, {"role": "user", "content": user}],
+                           max_tokens=300, temperature=0.0)
+            obj = extract_json(txt)
+            if isinstance(obj, dict) and field in obj:
+                return bool(obj[field])
+        except Exception:
+            continue
+    return None
+
+
 def _vote(chat: Any, system: str, user: str, key: str) -> bool | None:
     def one() -> bool | None:
         try:
@@ -900,6 +1002,7 @@ def report_decomp(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dic
 def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], None],
         north_star: dict[str, float]) -> None:
     R, S = ctx.report, "locomo"
+    os.environ.setdefault("HMEM_FIXED_NOW", "29/10/2026 12:00")   # [PARCHE22] prompt estable → cacheable
     data, info = load_dataset(ctx.live)
     if data is None:
         R.suite_skipped[S] = info
@@ -1222,43 +1325,101 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
 
     # ---- respuestas reales del agente + juez
     from llm import LLM
-    from agente import BASE_PROMPT
+    from agente import BASE_PROMPT, now_str
+    # [PARCHE22] el agente responde en el servidor STM; el juez, en otro (por defecto el LTM, ocioso en esta fase):
+    # responder y juzgar se solapan. Respuestas y juicios deterministas (T=0) y en caché persistente.
+    judge_url = os.getenv("HMEM_JUDGE_URL", "").strip() or C.LLM_LTM_URL
     chat = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
+    jchat = LLM(base_url=judge_url, model=C.REMOTE_MODEL_ALIAS)
+    fp_a, fp_j = server_fingerprint(C.LLM_STM_URL), server_fingerprint(judge_url)
+    temp = float(os.getenv("HMEM_ANSWER_TEMP", "0"))
+    votes = max(1, int(os.getenv("HMEM_JUDGE_VOTES", "1")))
+    j_workers = max(1, int(os.getenv("HMEM_JUDGE_WORKERS", "2")))
+    nocache = os.getenv("HMEM_LOCOMO_NOCACHE", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
+    bc = BenchCache(base / "banco.sqlite")
+    print(f"\n   agente: {fp_text(fp_a)} · T={temp:g}")
+    print(f"   juez:   {fp_text(fp_j)} · {votes} voto(s) · caché {'DESACTIVADA' if nocache else 'activa'} · "
+          f"fecha del prompt {now_str()}")
     rnd = random.Random(10)
     ref_items = rnd.sample(pos, min(n_ref, len(pos))) if n_ref else []
-    jobs = [(it, it["system"]) for it in items] + [({**it, "ref": True}, BASE_PROMPT.format(now=time.strftime(
-        "%d/%m/%Y %H:%M"))) for it in ref_items]
+    jobs = [(it, it["system"]) for it in items] + [({**it, "ref": True}, BASE_PROMPT.format(now=now_str()))
+                                                   for it in ref_items]
 
     def answer(job: tuple[dict, str]) -> str:
         it, system = job
+        key = BenchCache.key("a1", fp_a["id"], temp, 350, system, it["q"])
+        hit = None if nocache else bc.get_answer(key)
+        if hit is not None:
+            it["t_answer"], it["cached"] = hit[1], True
+            return hit[0]
         t_a = time.perf_counter()   # [PARCHE17] tiempo de respuesta del agente (LLM incluido)
         try:
-            return chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
-                             max_tokens=350, temperature=0.2)
+            a = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
+                          max_tokens=350, temperature=temp)
         except Exception as exc:
+            it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
             return f"[error LLM: {type(exc).__name__}]"
-        finally:
-            it["t_answer"] = time.perf_counter() - t_a
+        it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
+        if not nocache:
+            bc.put_answer(key, a, it["t_answer"])
+        return a
 
     def judge(it: dict) -> bool | None:
         if it["cat"] == 5:
-            return _vote(chat, LOCOMO_NEG_JUDGE, f"Pregunta: {it['q']}\nRespuesta trampa: {it['trap']}\n"
-                                                 f"Respuesta del asistente: {it['a']}", "inventa")
-        return _vote(chat, LOCOMO_POS_JUDGE, f"Pregunta: {it['q']}\nRespuesta de referencia: {it['gold']}\n"
-                                             f"Respuesta del asistente: {it['a']}", "correcta")
+            system, field = LOCOMO_NEG_JUDGE, "inventa"
+            user = f"Pregunta: {it['q']}\nRespuesta trampa: {it['trap']}\nRespuesta del asistente: {it['a']}"
+        else:
+            system, field = LOCOMO_POS_JUDGE, "correcta"
+            user = f"Pregunta: {it['q']}\nRespuesta de referencia: {it['gold']}\nRespuesta del asistente: {it['a']}"
+        if str(it.get("a", "")).startswith("[error LLM"):
+            return None
+        key = BenchCache.key("j1", fp_j["id"], votes, system, user)
+        hit = None if nocache else bc.get_verdict(key)
+        if hit is not None:
+            return hit[0]
+        v = judge_once(jchat, system, user, field) if votes == 1 else _vote(jchat, system, user, field)
+        if v is not None and not nocache:
+            bc.put_verdict(key, v)
+        return v
 
     t0 = time.time()
-    print(f"\n   … {len(jobs)} respuestas del agente real + juez por mayoría ({workers} en paralelo)", flush=True)
-    done_items: list[dict] = []
-    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        for k, ((it, _s), a) in enumerate(zip(jobs, ex.map(answer, jobs)), 1):
-            it["a"] = a
-            done_items.append(it)
-            if k % 50 == 0:
-                print(f"     {k}/{len(jobs)} respuestas", flush=True)
-        for it, v in zip(done_items, ex.map(judge, done_items)):
-            it["v"] = v
-    print(f"   listo ({(time.time() - t0) / 60:.0f} min)")
+    n_jobs = len(jobs)
+    print(f"   … {n_jobs} respuestas del agente ({workers} en paralelo) + juez ({j_workers} en paralelo, a la vez)",
+          flush=True)
+    done_items: list[dict] = [it for it, _s in jobs]
+
+    def progress(n_a: int, n_j: int) -> None:
+        el = (time.time() - t0) / 60
+        rate = max(n_a + n_j, 1) / max(el, 1e-6)
+        left = (2 * n_jobs - n_a - n_j) / rate
+        print(f"     respuestas {n_a}/{n_jobs} ({bc.hits['a']} de caché) · juicios {n_j}/{n_jobs} "
+              f"({bc.hits['j']} de caché) · {el:.0f} min · quedan ≈{left:.0f} min", flush=True)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as exa, \
+            concurrent.futures.ThreadPoolExecutor(max_workers=j_workers) as exj:
+        fa = {exa.submit(answer, job): job[0] for job in jobs}
+        fj: list[concurrent.futures.Future] = []
+        step = max(50, n_jobs // 20)
+        for k, f in enumerate(concurrent.futures.as_completed(fa), 1):
+            it = fa[f]
+            it["a"] = f.result()
+            fut = exj.submit(judge, it)
+            fut.add_done_callback(lambda ff, _it=it: _it.__setitem__("v", ff.result()))
+            fj.append(fut)
+            if k % step == 0:
+                progress(k, sum(x.done() for x in fj))
+        for k, f in enumerate(concurrent.futures.as_completed(fj), 1):
+            if k % step == 0:
+                progress(n_jobs, k)
+    for it in done_items:   # la callback puede no haber corrido aún al salir: se asegura el veredicto
+        it.setdefault("v", None)
+    bc.close()
+    print(f"   listo ({(time.time() - t0) / 60:.0f} min) · respuestas nuevas {bc.new['a']} / de caché {bc.hits['a']} · "
+          f"juicios nuevos {bc.new['j']} / de caché {bc.hits['j']}")
+    R.add(S, "Banco: respuestas y juicios reutilizados de la caché", True,
+          f"{bc.hits['a']}/{n_jobs} · {bc.hits['j']}/{n_jobs}", "(observación)", "info", "benchmarks/locomo.py")
+    R.add(S, "Servidor del agente / del juez", True, f"{fp_a['id']} / {fp_j['id']}", "(huella)", "info",
+          "", f"agente: {fp_text(fp_a)} · juez: {fp_text(fp_j)}")
     main_items = [it for it in done_items if not it.get("ref")]
     ref_done = [it for it in done_items if it.get("ref")]
     pos = [it for it in main_items if it["cat"] in POS_CATS]
@@ -1277,6 +1438,12 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         R.add(S, "Tiempo de respuesta del agente (mediana / P95)", True,
               f"{percentile(t_ans, 50):.2f} s / {percentile(t_ans, 95):.2f} s", "(observación)", "info",
               "agente.py · _build_system (tamaño del prompt)", f"{workers} en paralelo")
+    a_len = sorted(len(str(it.get("a", ""))) for it in main_items)   # [PARCHE22]
+    if a_len:
+        print(f"   longitud de la respuesta: mediana {percentile(a_len, 50):.0f} caracteres · P95 {percentile(a_len, 95):.0f}")
+        R.add(S, "Longitud de la respuesta (mediana / P95, caracteres)", True,
+              f"{percentile(a_len, 50):.0f} / {percentile(a_len, 95):.0f}", "(observación)", "info",
+              "agente.py · DIRECT_RULE (ANSWER_DIRECT)")
     print(f"\n   🎯 OBJETIVO EN LOCOMO  ({len(pos)} preguntas con respuesta · {len(neg)} adversariales)")
     print(f"   correctas {c_ok}/{len(pos)} = {pct(c_ok / max(1, len(pos)))} [IC95 {pct(c_lo)}–{pct(c_hi)}] "
           f"(meta ≥ {pct(north_star['correctas'])}) · inventa {n_inv}/{len(neg)} = {pct(n_inv / max(1, len(neg)))} "
@@ -1353,6 +1520,24 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                        f"p={c['p']:.3f})")
                 print(f"   {label:<10} {txt}")
                 R.add(S, f"Comparado con la base · {label}", True, txt, "(decisión)", "info", "agente.py · BASE_PROMPT")
+            for c in POS_CATS:   # [PARCHE22] comparación pareada por categoría
+                cc = compare_runs([r for r in base_rows if int(r["cat"]) == c],
+                                  [r for r in new_rows if int(r["cat"]) == c])["pos"]
+                if cc["n"]:
+                    txt = (f"{pct(cc['antes'] / cc['n'])} → {pct(cc['ahora'] / cc['n'])} (n={cc['n']} · mejoran "
+                           f"{cc['mejora']} · empeoran {cc['empeora']} · p={cc['p']:.3f})")
+                    print(f"     · {CATS[c]:<11} {txt}")
+                    R.add(S, f"Comparado con la base · {CATS[c]}", True, txt, "(decisión)", "info", "")
+            try:   # [PARCHE22] ¿la base se midió con el mismo servidor, juez y forma de medir?
+                bm = json.loads(Path(base_path).with_suffix(".meta.json").read_text(encoding="utf-8"))
+                same = (bm.get("agente", {}).get("id"), bm.get("juez", {}).get("id"), bm.get("temp"), bm.get("votos")) == \
+                       (fp_a["id"], fp_j["id"], temp, votes)
+                msg = "misma huella de servidor, juez y medición" if same else (
+                    "⚠ la base se midió con OTRO servidor, juez o forma de medir: la comparación mezcla cambios")
+            except Exception:
+                same, msg = False, "⚠ la base no registra la huella del servidor (anterior al parche 22)"
+            print(f"   {msg}")
+            R.add(S, "Base comparable (huella)", True, "sí" if same else "no", "(aviso)", "info", "", msg)
             print("   (p = test de signos exacto sobre las preguntas que cambian; con el juez estocástico, "
                   "algo de cambio es ruido: decide con p < 0,05)")
 
@@ -1382,7 +1567,12 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     # detalle completo para auditar (fuera de git)
     # [PARCHE17] solo una ejecución COMPLETA (10 conversaciones, todas las preguntas) es base de comparaciones
     full = len(samples) == len(data) and not maxq
-    out = base / f"{'resultados' if full else 'parcial'}_{time.strftime('%Y%m%d_%H%M%S')}.jsonl"
+    stem = f"{'resultados' if full else 'parcial'}_{time.strftime('%Y%m%d_%H%M%S')}"
+    out = base / f"{stem}.jsonl"
+    for k in range(2, 100):   # [PARCHE22] dos ejecuciones en el mismo segundo no se pisan (la base no se pierde)
+        if not out.exists():
+            break
+        out = base / f"{stem}_{k}.jsonl"
     try:
         with out.open("w", encoding="utf-8") as fo:
             for it in done_items:
@@ -1403,6 +1593,13 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "episodios": [str(e.get("text", ""))[:300] for e in it["ret"]["epi_in"]]},
                                     ensure_ascii=False) + "\n")
         print(f"\n   detalle de cada pregunta: {out}")
+        out.with_suffix(".meta.json").write_text(json.dumps({   # [PARCHE22] huella de la medición
+            "fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "agente": fp_a, "juez": fp_j, "temp": temp, "votos": votes,
+            "nocache": nocache, "fixed_now": now_str(), "answer_direct": bool(getattr(C, "ANSWER_DIRECT", False)),
+            "config": {k: str(getattr(C, k, "")) for k in ("LTM_DIRECT_TOP_K", "EPI_PROMPT_K", "EPI_LOOKUP_K",
+                                                          "RETRIEVAL_PROFILE", "RERANK_MODE", "LTM_DECOMPOSE",
+                                                          "EPI_DIVERSITY", "LTM_SECOND_PASS")}},
+            ensure_ascii=False, indent=1), encoding="utf-8")
     except OSError:
         pass
 

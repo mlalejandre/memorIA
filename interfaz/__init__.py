@@ -6,8 +6,9 @@ import threading
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 SRC_DIR = os.path.join(ROOT_DIR, "src")
-import importlib.util
-if importlib.util.find_spec("agente") is None:  # solo si NO está instalado (pip install -e .)
+# [PARCHE22] siempre desde el repositorio: una instalación editable (pip install -e .) solo conoce los módulos que
+# existían al instalarla, y los añadidos después (descomponer, refinar...) fallaban con ModuleNotFoundError.
+if os.path.isdir(SRC_DIR):
     for p in (SRC_DIR, ROOT_DIR):
         if p not in sys.path:
             sys.path.insert(0, p)

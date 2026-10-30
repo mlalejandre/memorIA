@@ -201,6 +201,8 @@ EPI_DIVERSITY = os.getenv("EPI_DIVERSITY", "off").strip().lower()   # off | dia 
 EPI_PER_DAY = _int("EPI_PER_DAY", "3")
 EPI_DIVERSITY_POOL = _int("EPI_DIVERSITY_POOL", "3")    # se buscan EPI_LOOKUP_K × este factor candidatos
 LTM_SECOND_PASS = _flag("LTM_SECOND_PASS", "0")         # 2.ª pasada: 1 llamada LLM con lo recuperado
+# [PARCHE22] respuesta directa: el dato primero, en una frase (ver agente.DIRECT_RULE). Experimental hasta medirlo.
+ANSWER_DIRECT = _flag("ANSWER_DIRECT", "0")
 
 
 def _episode_limits(lookup: int, prompt: int) -> tuple[int, int]:  # [PARCHE18]
