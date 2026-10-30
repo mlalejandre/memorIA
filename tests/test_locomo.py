@@ -415,3 +415,19 @@ class TestThinkingAndDeterminism(unittest.TestCase):  # [PARCHE23]
                          (True, False, True))
         self.assertEqual(llm.last_usage, {})
 
+
+class TestDeterministicGeneration(unittest.TestCase):  # [PARCHE24]
+    def test_answer_key_compat_and_generation(self):
+        k = lambda *a: locomo.answer_key("fp", 0.0, 4096, "sis", "q", *a)
+        self.assertEqual(k(False, "w2cp1"), locomo.BenchCache.key("a1", "fp", 0.0, 350, "sis", "q"))          # P22
+        self.assertEqual(k(True, "w2cp1"), locomo.BenchCache.key("a1", "fp", 0.0, 4096, "sis", "q", "think"))  # P23
+        self.assertNotEqual(k(False, "w1cp0"), k(False, "w2cp1"))    # la base reproducible no reutiliza las antiguas
+        self.assertNotEqual(k(True, "w1cp0"), k(False, "w1cp0"))
+        self.assertEqual(locomo.gen_tag(1, False), "w1cp0")
+
+    def test_think_mode_env(self):
+        from unittest import mock
+        for v, want in (("", "off"), ("0", "off"), ("1", "on"), ("on", "on"), ("auto", "auto"), ("AUTO", "auto")):
+            with mock.patch.dict(os.environ, {"HMEM_ANSWER_THINK": v}):
+                self.assertEqual(locomo.think_mode_env(), want)
+

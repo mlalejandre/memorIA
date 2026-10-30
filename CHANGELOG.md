@@ -2,6 +2,11 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE24] -->
+- Optional thinking for the agent's final answer (`AGENT_THINK`: `off` default, `auto`, `on`; `src/pensar.py`). In `auto` the agent thinks only when the question asks it to compute something from memory (dates and durations, counts, combining facts about two people or moments) and skips direct and inference questions; every decision carries its reason. Ingestion, retrieval and judges are unchanged.
+- Web console: a "🧠 Pensar" selector (No / Auto / Siempre) next to Send, remembered per browser, a "thinking" status while the model reasons and the reason in the answer metadata. `/api/chat` and `/api/chat/stream` accept `think`.
+- Reproducible LoCoMo answers by default: one request at a time without server prompt cache (`HMEM_ANSWER_WORKERS=1`, `HMEM_ANSWER_CACHE_PROMPT=0`); the generation tag enters the cache key and the result fingerprint, so older answers are kept but not mixed in. `HMEM_ANSWER_THINK=auto` measures the automatic mode, with the paired comparison restricted to the questions that think.
+- Patch 23 results: one request at a time repeats 100 % of answers at temperature 0 (two in parallel: 37-49 %) and answers in 1.80 s instead of 3.07 s, only 15 % lower throughput. Thinking on 397 questions: correct 69.6 → 73.1 % (22 better, 11 worse, p = 0.08; not adopted under the rule), invention 5.7 → 4.5 %, at 15.2 s instead of 2.96 s per answer.
 <!-- [PARCHE23] -->
 - Patch 22 result: `ANSWER_DIRECT` rejected. Correct 69.5 → 69.6 % (69 better, 68 worse, p = 1.0), invention 5.4 → 6.7 % (p = 0.35); answers were 28 % shorter and 7 % faster. Long failing answers were a symptom of missing knowledge, not the cause. The new benchmark cut verdict noise from 7.2 % to 2.7 %: retrieval and judge are reproducible; only the agent's wording varies at temperature 0 (35 % of answers identical across runs).
 - Per-call `thinking` and `cache_prompt` in the LLM client, `LLM_CACHE_PROMPT` (default `1`, unchanged behaviour) and the token usage of the last answer.

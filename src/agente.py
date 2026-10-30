@@ -11,6 +11,7 @@ from typing import Any
 
 import config as C
 import descomponer  # [PARCHE19]
+import pensar  # [PARCHE24]
 import refinar  # [PARCHE20]
 from cartuchos import CartridgeManager
 from corto_plazo import ShortTermMemory, fmt_ts, role_label
@@ -402,7 +403,16 @@ class Agent:
             except Exception as exc:
                 self.log(f"[LTM-Ingesta] {exc}")
 
-    def chat_stream(self, text: str):
+    @staticmethod
+    def think_plan(text: str, think: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
+        """[PARCHE24] ¿Pensar antes de responder? → (argumentos para el LLM, información para la interfaz)."""
+        on, why = pensar.decide(text, think)
+        info = {"mode": pensar.configured_mode() if think is None else pensar.normalize(think), "on": on, "reason": why}
+        kw: dict[str, Any] = {"thinking": True, "max_tokens": int(C.ANSWER_MAX_TOKENS) + pensar.extra_tokens()} if on else {}
+        return kw, info
+
+    def chat_stream(self, text: str, think: str | None = None):
+        """think: 'off' | 'auto' | 'on' para este mensaje (None = AGENT_THINK). [PARCHE24]"""
         text = (text or "").strip()
         if not text:
             yield {"event": "error", "error": "Mensaje vacío"}
@@ -443,15 +453,18 @@ class Agent:
                             "summaries": len(stm_ctx.get("summaries", [])), "ms": stm_ctx.get("ms", 0)}
                 yield {"event": "context", "stm": stm_info, "ltm": ltm_res}
 
+                llm_kw, think_info = self.think_plan(text, think)   # [PARCHE24] solo la respuesta final
+                if think_info["on"]:
+                    yield {"event": "thinking", **think_info}
                 t1 = time.perf_counter()
                 parts: list[str] = []
                 try:
                     if hasattr(self.llm, "chat_stream"):
-                        for delta in self.llm.chat_stream(messages):
+                        for delta in self.llm.chat_stream(messages, **llm_kw):
                             parts.append(delta)
                             yield {"event": "token", "text": delta}
                     else:
-                        whole = self.llm.chat(messages)
+                        whole = self.llm.chat(messages, **llm_kw)
                         parts.append(whole)
                         yield {"event": "token", "text": whole}
                 except Exception as exc:
@@ -475,7 +488,7 @@ class Agent:
                     "answer": answer + (TRUNCATED_NOTE if truncated else ""), "error": None,
                     "stm": stm_info, "ltm": ltm_res,
                     "llm_ms": llm_ms, "total_ms": round((time.perf_counter() - t0) * 1000),
-                    "tokens": self.stm.total_tokens(),
+                    "tokens": self.stm.total_tokens(), "think": think_info,   # [PARCHE24]
                 }
                 self.history.append({"ts": time.time(), "q": text[:100], "res": res_obj})
                 del self.history[:-30]
@@ -485,8 +498,8 @@ class Agent:
                 if not finished:
                     self._set("IDLE", answer="error")
 
-    def chat(self, text: str) -> dict[str, Any]:
-        for ev in self.chat_stream(text):
+    def chat(self, text: str, think: str | None = None) -> dict[str, Any]:
+        for ev in self.chat_stream(text, think):
             if ev["event"] == "done":
                 return ev["result"]
             if ev["event"] == "error":

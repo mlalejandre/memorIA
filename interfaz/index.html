@@ -206,7 +206,16 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
     <div id="msgs"></div>
     <textarea id="inp" placeholder="Pregunta sobre cualquier hecho memorizado o conversa... (Enter envía, Shift+Enter nueva línea)"></textarea>
     <div class="row" style="justify-content:space-between">
-      <button class="send" id="send" onclick="sendMsg()">Enviar al Agente</button>
+      <div class="row" style="gap:8px;align-items:center">
+        <button class="send" id="send" onclick="sendMsg()">Enviar al Agente</button>
+        <!-- [PARCHE24] pensamiento del agente: off / auto / on -->
+        <label for="think" style="font-size:.72rem;color:var(--mu)" title="Pensar antes de responder: más lento, a veces más preciso en fechas, recuentos y comparaciones">🧠 Pensar</label>
+        <select id="think" onchange="saveThink()" title="No: responde directo · Auto: el agente decide (fechas, recuentos, comparaciones) · Siempre: piensa en cada respuesta" style="background:var(--inp);color:var(--tx);border:1px solid var(--bd);padding:4px 8px;border-radius:6px;font-size:.75rem">
+          <option value="off">No</option>
+          <option value="auto">Auto</option>
+          <option value="on">Siempre</option>
+        </select>
+      </div>
       <span id="hint" style="font-size:.72rem;color:var(--mu);font-family:var(--mono)"></span>
     </div>
   </div>
@@ -546,9 +555,19 @@ async function readSSE(resp, onEvent) {
   }
 }
 
-function metaHtml(stm, ltm, llmMs) {
+function saveThink() {   // [PARCHE24] preferencia del selector «Pensar» (solo este navegador)
+  try { localStorage.setItem('hmem_think', $('think').value); } catch(e) {}
+}
+function loadThink() {
+  try { const v = localStorage.getItem('hmem_think'); if(v && ['off','auto','on'].includes(v)) $('think').value = v; } catch(e) {}
+}
+document.addEventListener('DOMContentLoaded', loadThink);
+
+function metaHtml(stm, ltm, llmMs, think) {
   let meta = '⏱️ Corto: ' + stm.hits + ' aciertos (' + stm.ms + ' ms) | Largo: ' + (ltm.found ? 'SÍ' : 'NO') + ' (' + ltm.ms + ' ms)';
   if(llmMs != null) meta += ' | LLM: ' + llmMs + ' ms';
+  if(think && think.on) meta += ' | 🧠 pensó (' + esc(think.reason) + ')';
+  else if(think && think.mode === 'auto') meta += ' | sin pensar (' + esc(think.reason) + ')';
   if(ltm.sources && ltm.sources.length) {
     meta += '<br>📚 ' + ltm.sources.map(s => '<span class="source-pill">'+esc(s)+'</span>').join(' ');
   }
@@ -576,12 +595,16 @@ async function sendMsg() {
   $('msgs').appendChild(bubble);
   let acc = '', got = false;
   try {
-    const resp = await fetch('/api/chat/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:t})});
+    const think = $('think') ? $('think').value : 'off';   // [PARCHE24]
+    const resp = await fetch('/api/chat/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:t, think:think})});
     if(!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
     await readSSE(resp, ev => {
       if(ev.event === 'context') {
         setMeta(bubble, metaHtml(ev.stm, ev.ltm, null));
         $('hint').textContent = 'Generando respuesta...';
+      } else if(ev.event === 'thinking') {
+        $('hint').textContent = '🧠 Pensando antes de responder (' + ev.reason + ')... puede tardar 10-25 s';
+        if(!acc) body.textContent = '🧠 …';
       } else if(ev.event === 'token') {
         acc += ev.text; got = true;
         body.textContent = acc;
@@ -589,7 +612,7 @@ async function sendMsg() {
       } else if(ev.event === 'done') {
         got = true;
         body.textContent = ev.result.answer;
-        setMeta(bubble, metaHtml(ev.result.stm, ev.result.ltm, ev.result.llm_ms));
+        setMeta(bubble, metaHtml(ev.result.stm, ev.result.ltm, ev.result.llm_ms, ev.result.think));
       } else if(ev.event === 'error') {
         got = true;
         body.textContent = (acc ? acc + '\n\n' : '') + '⚠️ ' + ev.error;

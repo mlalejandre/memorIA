@@ -86,8 +86,9 @@ class MockLLM:
     def count_tokens(self, text: str) -> int:
         return max(1, len(str(text or "")) // 4)
 
-    def chat(self, messages, max_tokens=None, temperature=None) -> str:
+    def chat(self, messages, max_tokens=None, temperature=None, **kw) -> str:
         self.calls += 1
+        self.last_kw = dict(kw, max_tokens=max_tokens)   # [PARCHE24] thinking / cache_prompt por llamada
         content = " ".join(m.get("content", "") for m in messages if isinstance(m, dict))
         content = content.split("FRAGMENTO:")[-1]
         words = re.findall(r"[A-Za-zÁÉÍÓÚáéíóúñÑ0-9\-]{5,}", content)

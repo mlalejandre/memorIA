@@ -42,10 +42,12 @@
 #   HMEM_JUDGE_WORKERS   juicios en paralelo (defecto 2) · HMEM_JUDGE_VOTES votos por juicio (defecto 1, T=0)
 #   HMEM_LOCOMO_NOCACHE  1 = ni lee ni escribe la caché de respuestas/juicios (para medir el ruido del servidor)
 #   HMEM_FIXED_NOW       «fecha actual» del prompt (defecto 29/10/2026 12:00): sin ella el prompt cambia cada minuto
-#   HMEM_E2E_WORKERS     respuestas/juicios en paralelo (defecto 2)
+#   HMEM_E2E_WORKERS     (solo otras suites de prueba.py)
+#   [PARCHE24] HMEM_ANSWER_WORKERS respuestas del agente en paralelo (defecto 1) y HMEM_ANSWER_CACHE_PROMPT (defecto 0):
+#                        con 1 petición a la vez y sin caché de prompt el agente repite el 100 % de las respuestas (P23)
 #   [PARCHE23] razonamiento y determinismo del agente:
-#   HMEM_ANSWER_THINK    1 = el agente responde con el modo de pensamiento del modelo (solo el benchmark; antes se
-#                        comprueba con una sonda que el servidor lo active por petición)
+#   HMEM_ANSWER_THINK    off | on (=1) | auto: modo de pensamiento del agente (antes, una sonda comprueba que el
+#                        servidor lo active por petición). auto = src/pensar.py decide por pregunta [PARCHE24]
 #   HMEM_THINK_MAX_TOKENS  límite de tokens (pensamiento + respuesta) con HMEM_ANSWER_THINK=1 (defecto 4096)
 #   HMEM_LOCOMO_DETERMINISMO  1 = diagnóstico: cada pregunta se responde 2 veces en 4 configuraciones (1 o 2 en
 #                        paralelo · caché de prompt sí/no) y se mide cuántas respuestas salen idénticas; sin juez
@@ -67,6 +69,7 @@ from typing import Any, Callable
 
 import config as C
 import descomponer  # [PARCHE19]
+import pensar  # [PARCHE24]
 import refinar  # [PARCHE20]
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -906,6 +909,27 @@ THINK_PROBE = ("Un tren sale a las 9:40 y llega a las 13:15. ¿Cuántos minutos 
                "Responde solo con el número.")
 
 
+def gen_tag(workers: int, cache_prompt: bool) -> str:
+    """[PARCHE24] cómo se generaron las respuestas (entra en la clave de la caché y en la huella del resultado)."""
+    return f"w{int(workers)}cp{int(bool(cache_prompt))}"
+
+
+def answer_key(fp_id: str, temp: float, max_tokens: int, system: str, q: str, think: bool, gen: str) -> str:
+    """Clave de una respuesta del agente. Con la generación antigua (2 en paralelo + caché de prompt) la clave es la
+    de los parches 22-23, para reutilizar esas respuestas; con otra generación se añade su etiqueta."""
+    parts: list[Any] = ["a1", fp_id, temp, max_tokens if think else 350, system, q]
+    if think:
+        parts.append("think")
+    if gen != "w2cp1":
+        parts.append(gen)
+    return BenchCache.key(*parts)
+
+
+def think_mode_env() -> str:
+    v = os.getenv("HMEM_ANSWER_THINK", "").strip().lower()
+    return "auto" if v == "auto" else ("on" if v in {"1", "true", "yes", "si", "sí", "on"} else "off")
+
+
 def det_name(workers: int, cache_prompt: bool) -> str:
     return f"{workers} en paralelo · caché de prompt {'sí' if cache_prompt else 'no'}"
 
@@ -1121,7 +1145,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     size = max(1, int(os.getenv("HMEM_LOCOMO_CHUNK", "6")))
     maxq = max(0, int(os.getenv("HMEM_LOCOMO_MAXQ", "0")))
     n_ref = max(0, int(os.getenv("HMEM_LOCOMO_REF", "30")))
-    workers = max(1, int(os.getenv("HMEM_E2E_WORKERS", "2")))
+    workers = max(1, int(os.getenv("HMEM_ANSWER_WORKERS", "1")))   # [PARCHE24] 1 = agente reproducible
     reingest = os.getenv("HMEM_LOCOMO_REINGEST", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     models = (str(getattr(C, "REMOTE_MODEL_ALIAS", "")), str(getattr(C, "EMB_MODEL_ALIAS", "")),
               "mock" if ctx.mock else "live")
@@ -1443,8 +1467,12 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     j_workers = max(1, int(os.getenv("HMEM_JUDGE_WORKERS", "2")))
     nocache = os.getenv("HMEM_LOCOMO_NOCACHE", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     truthy = {"1", "true", "yes", "si", "sí"}
-    think = os.getenv("HMEM_ANSWER_THINK", "").strip().lower() in truthy   # [PARCHE23]
-    mt = max(512, int(os.getenv("HMEM_THINK_MAX_TOKENS", "4096"))) if think else 350
+    think_mode = think_mode_env()   # [PARCHE24] off | on | auto
+    think = think_mode != "off"
+    think_mt = max(512, int(os.getenv("HMEM_THINK_MAX_TOKENS", "4096")))
+    mt = think_mt if think else 350
+    a_cp = os.getenv("HMEM_ANSWER_CACHE_PROMPT", "0").strip().lower() in truthy   # [PARCHE24]
+    gen = gen_tag(workers, a_cp)
     if os.getenv("HMEM_LOCOMO_DETERMINISMO", "").strip().lower() in truthy:   # [PARCHE23]
         run_determinism(chat, items, temp, R, S, base, fp_a)
         return
@@ -1463,18 +1491,21 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         if pr["always_on"]:
             print("   ⚠ el servidor piensa también SIN pedírselo: la base podría no ser «sin pensamiento»")
     bc = BenchCache(base / "banco.sqlite")
-    print(f"\n   agente: {fp_text(fp_a)} · T={temp:g}" + (f" · PENSAMIENTO (máx. {mt} tokens)" if think else ""))
+    print(f"\n   agente: {fp_text(fp_a)} · T={temp:g} · {workers} a la vez · caché de prompt {'sí' if a_cp else 'no'}"
+          + (f" · PENSAMIENTO {think_mode} (máx. {mt} tokens)" if think else ""))
     print(f"   juez:   {fp_text(fp_j)} · {votes} voto(s) · caché {'DESACTIVADA' if nocache else 'activa'} · "
           f"fecha del prompt {now_str()}")
     rnd = random.Random(10)
     ref_items = rnd.sample(pos, min(n_ref, len(pos))) if n_ref else []
     jobs = [(it, it["system"]) for it in items] + [({**it, "ref": True}, BASE_PROMPT.format(now=now_str()))
                                                    for it in ref_items]
+    for it, _s in jobs:   # [PARCHE24] ¿piensa esta pregunta? (la referencia sin memoria, nunca)
+        it["think"], it["think_why"] = (False, "referencia") if it.get("ref") else pensar.decide(it["q"], think_mode)
 
     def answer(job: tuple[dict, str]) -> str:
         it, system = job
-        key = (BenchCache.key("a1", fp_a["id"], temp, mt, system, it["q"], "think") if think else
-               BenchCache.key("a1", fp_a["id"], temp, 350, system, it["q"]))   # [PARCHE23] sin pensar: misma clave
+        th = bool(it.get("think"))
+        key = answer_key(fp_a["id"], temp, think_mt, system, it["q"], th, gen)   # [PARCHE24]
         hit = None if nocache else bc.get_answer(key)
         if hit is not None:
             it["t_answer"], it["cached"] = hit[1], True
@@ -1482,12 +1513,13 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         t_a = time.perf_counter()   # [PARCHE17] tiempo de respuesta del agente (LLM incluido)
         try:
             a = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
-                          max_tokens=mt, temperature=temp, **({"thinking": True} if think else {}))
+                          max_tokens=think_mt if th else 350, temperature=temp, cache_prompt=a_cp,
+                          **({"thinking": True} if th else {}))
         except Exception as exc:
             it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
             return f"[error LLM: {type(exc).__name__}]"
         it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
-        if think:   # [PARCHE23] coste del pensamiento
+        if th:   # [PARCHE23] coste del pensamiento
             it["tokens"] = chat.last_usage.get("completion_tokens")
             it["cut"] = chat.last_finish_reason == "length"
         if not nocache:
@@ -1570,6 +1602,21 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         R.add(S, "Tiempo de respuesta del agente (mediana / P95)", True,
               f"{percentile(t_ans, 50):.2f} s / {percentile(t_ans, 95):.2f} s", "(observación)", "info",
               "agente.py · _build_system (tamaño del prompt)", f"{workers} en paralelo")
+    if think_mode == "auto":   # [PARCHE24] qué decide el modo automático y cuánto cuesta
+        routed = [it for it in main_items if it.get("think")]
+        why: dict[str, int] = {}
+        for it in routed:
+            why[it["think_why"]] = why.get(it["think_why"], 0) + 1
+        by_cat = " · ".join(f"{CATS[c]} {sum(1 for it in routed if it['cat'] == c)}/{sum(1 for it in main_items if it['cat'] == c)}"
+                            for c in sorted({it['cat'] for it in main_items}))
+        t_r = [it["t_answer"] for it in routed if it.get("t_answer")]
+        t_n = [it["t_answer"] for it in main_items if not it.get("think") and it.get("t_answer")]
+        txt = f"{len(routed)}/{len(main_items)} · " + " · ".join(f"{k} {v}" for k, v in sorted(why.items(), key=lambda x: -x[1]))
+        print(f"   pensamiento AUTO: piensan {txt} · por categoría: {by_cat}")
+        print(f"   tiempo de respuesta: piensan mediana {percentile(t_r, 50):.2f} s · no piensan {percentile(t_n, 50):.2f} s")
+        R.add(S, "Pensamiento auto: preguntas que piensan", True, txt, "(observación)", "info", "pensar.py · RULES", by_cat)
+        R.add(S, "Pensamiento auto: tiempo piensan / no piensan (mediana)", True,
+              f"{percentile(t_r, 50):.2f} s / {percentile(t_n, 50):.2f} s", "(observación)", "info", "pensar.py")
     if think:   # [PARCHE23]
         toks = [it["tokens"] for it in main_items if it.get("tokens")]
         n_cut = sum(1 for it in main_items if it.get("cut"))
@@ -1670,10 +1717,22 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                            f"{cc['mejora']} · empeoran {cc['empeora']} · p={cc['p']:.3f})")
                     print(f"     · {CATS[c]:<11} {txt}")
                     R.add(S, f"Comparado con la base · {CATS[c]}", True, txt, "(decisión)", "info", "")
+            if think_mode == "auto":   # [PARCHE24] el efecto, solo donde el modo automático decidió pensar
+                routed_rows = [r for r, it in zip(new_rows, main_items) if it.get("think")]
+                for key, label in (("pos", "correctas"), ("neg", "inventa")):
+                    cc = compare_runs(base_rows, routed_rows)[key]
+                    if cc["n"]:
+                        a0 = cc["antes"] / cc["n"] if key == "pos" else 1 - cc["antes"] / cc["n"]
+                        a1 = cc["ahora"] / cc["n"] if key == "pos" else 1 - cc["ahora"] / cc["n"]
+                        txt = (f"{pct(a0)} → {pct(a1)} (n={cc['n']} · mejoran {cc['mejora']} · empeoran "
+                               f"{cc['empeora']} · p={cc['p']:.3f})")
+                        print(f"     · solo las que piensan · {label:<9} {txt}")
+                        R.add(S, f"Comparado con la base · solo las que piensan · {label}", True, txt, "(decisión)",
+                              "info", "pensar.py")
             try:   # [PARCHE22] ¿la base se midió con el mismo servidor, juez y forma de medir?
                 bm = json.loads(Path(base_path).with_suffix(".meta.json").read_text(encoding="utf-8"))
-                same = (bm.get("agente", {}).get("id"), bm.get("juez", {}).get("id"), bm.get("temp"), bm.get("votos")) == \
-                       (fp_a["id"], fp_j["id"], temp, votes)
+                same = (bm.get("agente", {}).get("id"), bm.get("juez", {}).get("id"), bm.get("temp"), bm.get("votos"),
+                        bm.get("gen", "w2cp1")) == (fp_a["id"], fp_j["id"], temp, votes, gen)   # [PARCHE24] + generación
                 msg = "misma huella de servidor, juez y medición" if same else (
                     "⚠ la base se midió con OTRO servidor, juez o forma de medir: la comparación mezcla cambios")
             except Exception:
@@ -1725,6 +1784,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "causa": it.get("bucket"), "ms": round(it["ret"]["ms"], 1),
                                      "t_respuesta": round(it.get("t_answer") or 0.0, 2),  # [PARCHE17]
                                      "tokens": it.get("tokens"), "cortada": bool(it.get("cut")),  # [PARCHE23]
+                                     "piensa": bool(it.get("think")), "motivo_piensa": it.get("think_why"),  # [PARCHE24]
                                      "subconsultas": it["ret"].get("subs") or [],  # [PARCHE19]
                                      "consultas_2a": it["ret"].get("subs_ref") or [],  # [PARCHE20]
                                      "sesiones_prompt": it["ret"].get("sessions"),
@@ -1740,6 +1800,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             "fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "agente": fp_a, "juez": fp_j, "temp": temp, "votos": votes,
             "nocache": nocache, "fixed_now": now_str(), "answer_direct": bool(getattr(C, "ANSWER_DIRECT", False)),
             "think": think, "max_tokens": mt, "cache_prompt": bool(getattr(C, "LLM_CACHE_PROMPT", True)),  # [PARCHE23]
+            "think_mode": think_mode, "gen": gen, "workers": workers, "answer_cache_prompt": a_cp,  # [PARCHE24]
             "config": {k: str(getattr(C, k, "")) for k in ("LTM_DIRECT_TOP_K", "EPI_PROMPT_K", "EPI_LOOKUP_K",
                                                           "RETRIEVAL_PROFILE", "RERANK_MODE", "LTM_DECOMPOSE",
                                                           "EPI_DIVERSITY", "LTM_SECOND_PASS")}},

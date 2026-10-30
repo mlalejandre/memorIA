@@ -197,9 +197,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         payload = self._read_json()
 
         if path == "/api/chat":
-            self._json(agent.chat(payload.get("text", "")))
+            self._json(agent.chat(payload.get("text", ""), payload.get("think")))   # [PARCHE24]
         elif path == "/api/chat/stream":
-            self._sse(agent.chat_stream(str(payload.get("text", ""))))
+            self._sse(agent.chat_stream(str(payload.get("text", "")), payload.get("think")))
         elif path == "/api/compact":
             self._json({"reports": agent.stm.compact(force=True)})
         elif path == "/api/reset_stm":

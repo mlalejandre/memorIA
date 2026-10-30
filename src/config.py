@@ -124,6 +124,10 @@ THINKING = _flag("THINKING", "0")
 # [PARCHE23] reutilizar en el servidor la caché KV del prefijo común del prompt (más rápido; con 2 slots las
 # respuestas con T=0 pueden variar algo entre ejecuciones). El diagnóstico de determinismo decide si conviene 0.
 LLM_CACHE_PROMPT = _flag("LLM_CACHE_PROMPT", "1")
+# [PARCHE24] pensamiento del agente en la respuesta final: off | auto | on (ver src/pensar.py). La interfaz deja
+# elegirlo por mensaje; este es el valor por defecto.
+AGENT_THINK = os.getenv("AGENT_THINK", "off").strip().lower()
+AGENT_THINK_EXTRA_TOKENS = _int("AGENT_THINK_EXTRA_TOKENS", "4096")
 
 # ============================================================
 # MEMORIA A CORTO PLAZO (STM)

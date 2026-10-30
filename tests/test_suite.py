@@ -285,7 +285,10 @@ class _StubAgent:
     def status(self):
         return {"ok": True}
 
-    def chat(self, text):
+    last_think = "sin llamar"
+
+    def chat(self, text, think=None):   # [PARCHE24] la interfaz reenvía el modo de pensamiento
+        _StubAgent.last_think = think
         return {"answer": "ok"}
 
 
@@ -827,3 +830,55 @@ class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestThinkingModes(unittest.TestCase):  # [PARCHE24]
+    def test_modes_and_reasons(self):
+        import pensar
+        self.assertEqual(pensar.decide("¿Cuándo fue Ana a Lisboa?", "off"), (False, "desactivado"))
+        self.assertEqual(pensar.decide("Hola", "on"), (True, "activado siempre"))
+        self.assertEqual(pensar.decide("¿Cuándo fue Ana a Lisboa?", "auto"), (True, "fechas"))
+        self.assertEqual(pensar.decide("When did Gina go to a dance class?", "auto"), (True, "fechas"))
+        self.assertEqual(pensar.decide("¿Cuántas semanas duró el viaje?", "auto"), (True, "fechas"))
+        self.assertEqual(pensar.decide("¿Cuántas veces fue a la playa?", "auto"), (True, "recuento"))
+        self.assertEqual(pensar.decide("How many pets does Melanie have?", "auto"), (True, "recuento"))
+        self.assertEqual(pensar.decide("Which city have both Jean and John visited?", "auto"), (True, "combinar datos"))
+        self.assertEqual(pensar.decide("¿Cómo se llama el hurón de Lucas?", "auto"), (False, "pregunta directa"))
+        self.assertEqual(pensar.decide("What would Caroline's political leaning likely be?", "auto"),
+                         (False, "pregunta directa"))   # inferencia: en P23 pensar la volvió prudente de más
+        self.assertEqual([pensar.normalize(x) for x in ("Sí", "1", "AUTO", "nunca", "raro", None)],
+                         ["on", "on", "auto", "off", "off", "off"])
+
+    def test_agent_plan_and_default(self):
+        from agente import Agent
+        kw, info = Agent.think_plan("¿Cuándo nació Thor?", "auto")
+        self.assertTrue(kw["thinking"])
+        self.assertGreater(kw["max_tokens"], C.ANSWER_MAX_TOKENS)   # el razonamiento no se come la respuesta
+        self.assertEqual(info, {"mode": "auto", "on": True, "reason": "fechas"})
+        kw, info = Agent.think_plan("¿Cuándo nació Thor?", "off")
+        self.assertEqual((kw, info["on"]), ({}, False))              # sin pensar: llamada idéntica a la de siempre
+        with mock.patch.object(C, "AGENT_THINK", "off"):
+            self.assertEqual(Agent.think_plan("¿Cuándo nació Thor?")[1]["mode"], "off")   # defecto: off
+
+    def test_interface_forwards_think_mode(self):
+        from interfaz import frontend
+        srv = frontend.ThreadedHTTPServer(("127.0.0.1", 0), frontend.Handler)
+        srv.agent = _StubAgent()
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            port = srv.server_address[1]
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            body = b'{"text": "hola", "think": "auto"}'
+            conn.request("POST", "/api/chat", body=body, headers={"Content-Type": "application/json",
+                                                                  "Host": f"127.0.0.1:{port}"})
+            resp = conn.getresponse()
+            resp.read()
+            conn.close()
+            self.assertEqual(resp.status, 200)
+            self.assertEqual(_StubAgent.last_think, "auto")
+            html = (ROOT / "interfaz" / "index.html").read_text(encoding="utf-8")
+            self.assertIn('id="think"', html)
+            self.assertIn("ev.event === 'thinking'", html)
+        finally:
+            srv.shutdown()
+            srv.server_close()
