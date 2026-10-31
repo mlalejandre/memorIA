@@ -72,13 +72,15 @@ def _wait_for_server(port: int, gpu_idx: str, log_file: str) -> None:
     raise RuntimeError(f"Servidor GPU {gpu_idx} no respondió.\n--- Log ---\n{peek}")
 
 
-def _launch_cmd(gpu_idx: str, port: int, ctx: int, slots: int, pid_file: str, log_file: str) -> str:
+def _launch_cmd(gpu_idx: str, port: int, ctx: int, slots: int, pid_file: str, log_file: str,
+                model_path: str | None = None) -> str:
     q = shlex.quote
     host = "127.0.0.1" if _is_local() else "0.0.0.0"
     extra = " ".join(q(a) for a in shlex.split(C.LLAMA_SERVER_EXTRA))
+    # [PARCHE30] CUDA_DEVICE_ORDER=PCI_BUS_ID: los índices de GPU coinciden con los de nvidia-smi
     return (
-        f"CUDA_VISIBLE_DEVICES={q(gpu_idx)} nohup {q(C.LLAMA_SERVER_BIN)} "
-        f"-m {q(C.REMOTE_MODEL_PATH)} --alias {q(C.REMOTE_MODEL_ALIAS)} "
+        f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(gpu_idx)} nohup {q(C.LLAMA_SERVER_BIN)} "
+        f"-m {q(model_path or C.REMOTE_MODEL_PATH)} --alias {q(C.REMOTE_MODEL_ALIAS)} "
         f"--host {host} --port {port} -ngl all --split-mode none --flash-attn on "
         f"-c {ctx} -np {slots} -ctk q8_0 -ctv q8_0 --threads {C.REMOTE_THREADS} {extra} "
         f"> {q(log_file)} 2>&1 < /dev/null &\n"
@@ -86,7 +88,8 @@ def _launch_cmd(gpu_idx: str, port: int, ctx: int, slots: int, pid_file: str, lo
     )
 
 
-def _start(label: str, gpu_idx: str, port: int, ctx: int, slots: int, pid: str, log: str) -> bool:
+def _start(label: str, gpu_idx: str, port: int, ctx: int, slots: int, pid: str, log: str,
+           model_path: str | None = None) -> bool:
     """Devuelve True si ESTA sesión lanzó el servidor."""
     if is_remote_health_ok(port):
         print(f"✅ {label} ya activa en puerto {port}.", flush=True)
@@ -102,7 +105,7 @@ def _start(label: str, gpu_idx: str, port: int, ctx: int, slots: int, pid: str, 
     if not C.REMOTE_MODEL_PATH:
         raise RuntimeError("SERVER_AUTOSTART=1 requiere REMOTE_MODEL_PATH (ruta al .gguf) en .env.")
     print(f"⚡ Lanzando llama-server para {label}...", flush=True)
-    res = run_remote(_launch_cmd(gpu_idx, port, ctx, slots, pid, log), timeout=10)
+    res = run_remote(_launch_cmd(gpu_idx, port, ctx, slots, pid, log, model_path), timeout=10)
     if res.returncode != 0:
         raise RuntimeError(f"Error lanzando {label}: {res.stderr.strip()}")
     _wait_for_server(port, gpu_idx, log)
@@ -120,7 +123,8 @@ def start_gpu1() -> None:
     global _started_gpu1
     total_ctx = C.SLOT_CTX_GPU1 * C.PARALLEL_SLOTS_GPU1
     if _start("GPU 1 (Memoria Corta / Agente)", C.GPU1_INDEX, C.SERVER_PORT_GPU1, total_ctx,
-              C.PARALLEL_SLOTS_GPU1, C.REMOTE_PID_GPU1, C.REMOTE_LOG_GPU1):
+              C.PARALLEL_SLOTS_GPU1, C.REMOTE_PID_GPU1, C.REMOTE_LOG_GPU1,
+              getattr(C, "REMOTE_MODEL_PATH_STM", "") or None):   # [PARCHE30]
         _started_gpu1 = True
 
 
@@ -143,7 +147,7 @@ def _launch_emb_cmd() -> str:
     extra = " ".join(q(a) for a in shlex.split(getattr(C, "EMB_SERVER_EXTRA", "")))
     ctx = C.EMB_CTX
     return (
-        f"CUDA_VISIBLE_DEVICES={q(C.GPU2_INDEX)} nohup {q(C.LLAMA_SERVER_BIN)} "
+        f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(C.GPU2_INDEX)} nohup {q(C.LLAMA_SERVER_BIN)} "
         f"-m {q(C.EMB_MODEL_PATH)} --alias {q(C.EMB_MODEL_ALIAS)} "
         f"--host {host} --port {C.SERVER_PORT_GPU2} -ngl all --split-mode none "
         f"--embeddings --pooling cls -c {ctx} -b {ctx} -ub {ctx} -np 1 --threads {C.REMOTE_THREADS} {extra} "

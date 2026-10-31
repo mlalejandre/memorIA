@@ -93,6 +93,9 @@ SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
 LLAMA_SERVER_BIN = os.getenv("LLAMA_SERVER_BIN", "llama-server")
 LLAMA_SERVER_EXTRA = os.getenv("LLAMA_SERVER_EXTRA", "")
 REMOTE_MODEL_PATH = os.getenv("REMOTE_MODEL_PATH", "")
+# [PARCHE30] modelo propio para el servidor que RESPONDE (STM, GPU 1); vacío = el mismo que REMOTE_MODEL_PATH.
+# La memoria larga (ingesta y juez del banco) sigue con REMOTE_MODEL_PATH.
+REMOTE_MODEL_PATH_STM = os.getenv("REMOTE_MODEL_PATH_STM", "").strip()
 REMOTE_MODEL_ALIAS = os.getenv("REMOTE_MODEL_ALIAS", "local-model")
 REMOTE_THREADS = _int("REMOTE_THREADS", "8")
 SERVER_AUTOSTART = _flag("SERVER_AUTOSTART", "0")

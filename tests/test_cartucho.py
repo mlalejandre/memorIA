@@ -138,3 +138,14 @@ class TestEventRule(unittest.TestCase):  # [PARCHE29]
         html = (ROOT / "interfaz" / "index.html").read_text(encoding="utf-8")
         self.assertIn("$('ingest-src').value = '';", html)
         self.assertIn("_lastIngestSrc", html)
+
+
+class TestServerLaunch(unittest.TestCase):  # [PARCHE30]
+    def test_stm_model_and_pci_order(self):
+        import servidor
+        with mock.patch.object(C, "REMOTE_MODEL_PATH", "/m/nail.gguf"), mock.patch.object(C, "LLAMA_SERVER_EXTRA", ""):
+            cmd = servidor._launch_cmd("1", 8088, 65536, 2, "/tmp/p", "/tmp/l", "/m/qwen.gguf")
+            self.assertIn("-m /m/qwen.gguf", cmd)
+            self.assertIn("CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1", cmd)
+            self.assertIn("-m /m/nail.gguf", servidor._launch_cmd("0", 8087, 32768, 1, "/tmp/p", "/tmp/l"))
+        self.assertEqual(C.REMOTE_MODEL_PATH_STM, __import__("os").environ.get("REMOTE_MODEL_PATH_STM", "").strip())

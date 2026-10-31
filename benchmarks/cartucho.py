@@ -42,7 +42,7 @@ os.environ.setdefault("HMEM_FIXED_NOW", "31/10/2026 12:00")
 
 import config as C  # noqa: E402
 
-MODES = ("sin memoria", "no", "auto", "siempre", "atrib")   # [PARCHE29] atrib = no + ATTRIB_EVENTS
+MODES = ("sin memoria", "no", "auto", "siempre", "atrib", "ref")   # [PARCHE29] atrib = no + ATTRIB_EVENTS · [PARCHE30] ref = como «no», pero responde el servidor LTM
 
 POS_JUDGE = (
     "Eres un evaluador. Se hizo a un asistente con memoria una pregunta sobre unos documentos que había guardado, y "
@@ -267,6 +267,8 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
         for k, (mode, q) in enumerate(jobs, 1):
             if mode == "sin memoria":
                 system, th, why = BASE_PROMPT.format(now=now_str()), False, "sin memoria"
+            elif mode == "ref":   # [PARCHE30] mismo prompt que «no», respondido por el servidor de la memoria larga
+                system, th, why = ret[q["id"]]["system"], False, "modelo de referencia (LTM)"
             elif mode == "atrib":   # [PARCHE29] mismo contexto, con la regla de sucesos y documentos
                 prev = getattr(C, "ATTRIB_EVENTS", False)
                 C.ATTRIB_EVENTS = True
@@ -281,9 +283,10 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
             mt = int(C.ANSWER_MAX_TOKENS) + pensar.extra_tokens() if th else 700
             t_a = time.perf_counter()
             try:
-                ans = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": q["q"]}],
-                                max_tokens=mt, temperature=0.0, cache_prompt=False,
-                                **({"thinking": True} if th else {}))
+                who = jchat if mode == "ref" else chat   # [PARCHE30]
+                ans = who.chat([{"role": "system", "content": system}, {"role": "user", "content": q["q"]}],
+                               max_tokens=mt, temperature=0.0, cache_prompt=False,
+                               **({"thinking": True} if th else {"thinking": False}))
             except Exception as exc:
                 ans = f"[error LLM: {type(exc).__name__}]"
             info = ret[q["id"]]
@@ -310,7 +313,7 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
               f"fallos: {causes}")
         print(f"   {'':<12} por tipo: {types}")
     pairs = {f"{x}→{y}": paired(rows, x, y) for x, y in (("sin memoria", "no"), ("no", "auto"), ("no", "siempre"),
-                                                          ("no", "atrib")) if x in modes and y in modes}
+                                                          ("no", "atrib"), ("ref", "no")) if x in modes and y in modes}
     for k, v in pairs.items():
         print(f"   pareado {k}: n={v['n']} · mejoran {v['mejoran']} · empeoran {v['empeoran']} · p={v['p']:.3f}")
     srcs: dict[str, int] = {}

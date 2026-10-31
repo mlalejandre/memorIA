@@ -2,6 +2,10 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE30] -->
+- `REMOTE_MODEL_PATH_STM`: the answering server (GPU 1) can run a different model from the long-term-memory server, which keeps doing ingestion (and judging in the benchmark). Server launch commands set `CUDA_DEVICE_ORDER=PCI_BUS_ID`, so GPU indexes match `nvidia-smi`.
+- The cartridge exam gains the mode `ref`: the same prompt answered by the long-term-memory server, to compare two answering models on exactly the same memory.
+- Patch 29 result: `ATTRIB_EVENTS` rejected on the document exam (85.3 → 82.4 %: 0 better, 2 worse; traps 1/15 in both), so the LoCoMo phase was not needed; the console's one-source-per-document guard stays. Found on the server: the embedding server ran on the RTX 3090 next to the answering model (`CUDA_VISIBLE_DEVICES=1`) instead of the RTX 2060, which explains the 240-340 ms per embedding call since 2026-10-29.
 <!-- [PARCHE29] -->
 - Web console, document ingestion: the source field is cleared after each document, and the console asks for confirmation when a document has no source or reuses the previous document's source with different text. In patch 27 the second article inherited the first one's source and the agent mixed the two events.
 - `ATTRIB_EVENTS` (default `0`, experimental): a prompt rule that extends attribution from people to events, dates and documents, and asks the agent to say a requested figure, name, cause or date is not recorded instead of completing it from general knowledge. The cartridge exam gains the mode `atrib` (same context, rule on).
