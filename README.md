@@ -222,6 +222,7 @@ python3 benchmarks/prueba.py          # emulated LLM/embeddings: validates logic
 python3 benchmarks/prueba.py --live   # real servers from .env
 python3 benchmarks/prueba.py --live --only escala   # the objective at 10k / 100k facts
 python3 benchmarks/prueba.py --live --only locomo   # public benchmark LoCoMo (real ingestion; hours, cached, resumable)
+python3 benchmarks/cartucho.py --cartucho santander --preguntas experiment/preguntas_santander.json   # exam a cartridge you loaded (works on a copy)
 ```
 
 ## ⚠️ Known limitations

@@ -2,6 +2,9 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE27] -->
+- Exam for a cartridge the user loaded (`benchmarks/cartucho.py`): works on a consistent copy of `body/cartuchos/<id>/memoria.db` (the original is only read), asks hand-written questions with reference answers and trap questions, and answers without memory and with memory under thinking off / auto / always, judged like LoCoMo. Evidence keys split failures into ingestion, retrieval and answer. First question set: `experiment/preguntas_santander.json` (83 questions on two Spanish Wikipedia articles, CC BY-SA 4.0: the Cabo Machichaco explosion of 1893 and the Santander fire of 1941, including traps that mix the two).
+- Patch 26 results: neither experiment adopted. Auto thinking without durations: correct 69.6 → 70.1 % (26 better, 18 worse, p = 0.29), temporal 68.2 → 72.6 % (p = 0.016, mostly the same answers as patch 24). Fifteen facts in the prompt: 69.6 → 70.3 % (57/46, p = 0.32), invention 6.1 → 7.0 %.
 <!-- [PARCHE26] -->
 - `AGENT_THINK=auto` no longer thinks on duration and age questions ("how long…", "how long ago…", "¿hace cuánto…?"): in patch 24 thinking counted from the prompt's current date instead of repeating the duration stated in the memory, and these questions got worse.
 - Web console: the "🧠 Pensar" selector gains "Por defecto" (uses `AGENT_THINK`), now the default choice, so a change of `AGENT_THINK` in `.env` reaches the console.
