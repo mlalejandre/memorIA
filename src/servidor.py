@@ -72,17 +72,22 @@ def _wait_for_server(port: int, gpu_idx: str, log_file: str) -> None:
     raise RuntimeError(f"Servidor GPU {gpu_idx} no respondió.\n--- Log ---\n{peek}")
 
 
+def llm_argv(port: int, ctx: int, slots: int, model_path: str | None = None) -> list[str]:
+    """[PARCHE31] Argumentos de llama-server para un servidor de chat (también los usa modelos.py)."""
+    host = "127.0.0.1" if _is_local() else "0.0.0.0"
+    return [C.LLAMA_SERVER_BIN, "-m", model_path or C.REMOTE_MODEL_PATH, "--alias", C.REMOTE_MODEL_ALIAS,
+            "--host", host, "--port", str(port), "-ngl", "all", "--split-mode", "none", "--flash-attn", "on",
+            "-c", str(ctx), "-np", str(slots), "-ctk", "q8_0", "-ctv", "q8_0", "--threads", str(C.REMOTE_THREADS),
+            *shlex.split(C.LLAMA_SERVER_EXTRA)]
+
+
 def _launch_cmd(gpu_idx: str, port: int, ctx: int, slots: int, pid_file: str, log_file: str,
                 model_path: str | None = None) -> str:
     q = shlex.quote
-    host = "127.0.0.1" if _is_local() else "0.0.0.0"
-    extra = " ".join(q(a) for a in shlex.split(C.LLAMA_SERVER_EXTRA))
     # [PARCHE30] CUDA_DEVICE_ORDER=PCI_BUS_ID: los índices de GPU coinciden con los de nvidia-smi
     return (
-        f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(gpu_idx)} nohup {q(C.LLAMA_SERVER_BIN)} "
-        f"-m {q(model_path or C.REMOTE_MODEL_PATH)} --alias {q(C.REMOTE_MODEL_ALIAS)} "
-        f"--host {host} --port {port} -ngl all --split-mode none --flash-attn on "
-        f"-c {ctx} -np {slots} -ctk q8_0 -ctv q8_0 --threads {C.REMOTE_THREADS} {extra} "
+        f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(gpu_idx)} nohup "
+        f"{' '.join(q(a) for a in llm_argv(port, ctx, slots, model_path))} "
         f"> {q(log_file)} 2>&1 < /dev/null &\n"
         f"echo $! > {q(pid_file)}"
     )
@@ -102,7 +107,7 @@ def _start(label: str, gpu_idx: str, port: int, ctx: int, slots: int, pid: str, 
         raise RuntimeError(
             "El autoarranque local de llama-server requiere un entorno POSIX (Linux, macOS o WSL2). "
             "En Windows usa SERVER_AUTOSTART=0 y arranca el servidor tú, o apunta SERVER_IP a un host Linux (SSH).")
-    if not C.REMOTE_MODEL_PATH:
+    if not (model_path or C.REMOTE_MODEL_PATH):
         raise RuntimeError("SERVER_AUTOSTART=1 requiere REMOTE_MODEL_PATH (ruta al .gguf) en .env.")
     print(f"⚡ Lanzando llama-server para {label}...", flush=True)
     res = run_remote(_launch_cmd(gpu_idx, port, ctx, slots, pid, log, model_path), timeout=10)
@@ -115,7 +120,8 @@ def _start(label: str, gpu_idx: str, port: int, ctx: int, slots: int, pid: str, 
 def start_gpu0() -> None:
     global _started_gpu0
     if _start("GPU 0 (Memoria Larga)", C.GPU0_INDEX, C.SERVER_PORT_GPU0, C.REMOTE_CTX_GPU0, 1,
-              C.REMOTE_PID_GPU0, C.REMOTE_LOG_GPU0):
+              C.REMOTE_PID_GPU0, C.REMOTE_LOG_GPU0,
+              getattr(C, "REMOTE_MODEL_PATH_LTM", "") or None):   # [PARCHE31]
         _started_gpu0 = True
 
 
@@ -141,16 +147,21 @@ def _port_open(host: str, port: int) -> bool:
         return False
 
 
+def emb_argv() -> list[str]:
+    """[PARCHE31] Argumentos de llama-server para el servidor de embeddings."""
+    host = "127.0.0.1" if _is_local() else "0.0.0.0"
+    ctx = str(C.EMB_CTX)
+    return [C.LLAMA_SERVER_BIN, "-m", C.EMB_MODEL_PATH, "--alias", C.EMB_MODEL_ALIAS, "--host", host,
+            "--port", str(C.SERVER_PORT_GPU2), "-ngl", "all", "--split-mode", "none", "--embeddings",
+            "--pooling", "cls", "-c", ctx, "-b", ctx, "-ub", ctx, "-np", "1", "--threads", str(C.REMOTE_THREADS),
+            *shlex.split(getattr(C, "EMB_SERVER_EXTRA", ""))]
+
+
 def _launch_emb_cmd() -> str:
     q = shlex.quote
-    host = "127.0.0.1" if _is_local() else "0.0.0.0"
-    extra = " ".join(q(a) for a in shlex.split(getattr(C, "EMB_SERVER_EXTRA", "")))
-    ctx = C.EMB_CTX
     return (
-        f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(C.GPU2_INDEX)} nohup {q(C.LLAMA_SERVER_BIN)} "
-        f"-m {q(C.EMB_MODEL_PATH)} --alias {q(C.EMB_MODEL_ALIAS)} "
-        f"--host {host} --port {C.SERVER_PORT_GPU2} -ngl all --split-mode none "
-        f"--embeddings --pooling cls -c {ctx} -b {ctx} -ub {ctx} -np 1 --threads {C.REMOTE_THREADS} {extra} "
+        f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(C.GPU2_INDEX)} nohup "
+        f"{' '.join(q(a) for a in emb_argv())} "
         f"> {q(C.REMOTE_LOG_GPU2)} 2>&1 < /dev/null &\n"
         f"echo $! > {q(C.REMOTE_PID_GPU2)}"
     )

@@ -11,6 +11,11 @@ from socketserver import ThreadingMixIn
 
 import config as C
 
+try:   # [PARCHE31] selector de modelos y GPUs
+    import modelos
+except Exception:  # pragma: no cover - la consola funciona sin él
+    modelos = None
+
 HTML_FILE = os.path.join(os.path.dirname(__file__), "index.html")
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "::1"}
 MAX_BODY = 20 * 1024 * 1024
@@ -138,7 +143,19 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
         elif path == "/api/status":
-            self._json(agent.status())
+            st = agent.status()
+            if modelos is not None and isinstance(st, dict):   # [PARCHE31] nombre del modelo de cada servidor
+                st.setdefault("system_info", {}).update(modelos.cached())
+            self._json(st)
+        elif path == "/api/servers":   # [PARCHE31] solo lectura: GPU, servidores y .gguf disponibles
+            if modelos is None:
+                self._json({"error": "módulo modelos no disponible"})
+            else:
+                inv = modelos.inventory()
+                for s in inv.get("servers", {}).values():
+                    s.pop("argv", None)   # la consola no necesita la línea completa
+                    s.pop("env", None)
+                self._json(inv)
         elif path == "/api/stm":
             self._json({"entries": agent.stm.snapshot()})
         elif path == "/api/tree":
@@ -267,6 +284,18 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cid = payload.get("id")
             fn = getattr(agent, "reset_cartridge", None) or getattr(agent, "reset_active_cartridge", None)
             self._json(fn(cid) if (fn and cid) else fn() if fn else {"ok": False})
+        elif path == "/api/servers/switch":   # [PARCHE31] cambia modelo / GPU / contexto de un servidor
+            if modelos is None:
+                self._json({"error": "módulo modelos no disponible"}, 400)
+                return
+            role = str(payload.get("role", ""))
+            if role not in modelos.ROLES:
+                raise ValueError("role debe ser stm, ltm o emb")
+            ctx = payload.get("ctx")
+            self._sse(modelos.switch_guarded(
+                agent, role, model=(str(payload["model"]) if payload.get("model") else None),
+                gpu=(str(payload["gpu"]) if payload.get("gpu") not in (None, "") else None),
+                ctx=(int(ctx) if ctx not in (None, "") else None), force=bool(payload.get("force"))))
         elif path == "/api/explorer/export_disk":
             export_path = C.BODY / f"largo_plazo_exportado_{time.strftime('%Y%m%d_%H%M%S')}"
             n = agent.ltm.export_to_filesystem(export_path)

@@ -148,4 +148,7 @@ class TestServerLaunch(unittest.TestCase):  # [PARCHE30]
             self.assertIn("-m /m/qwen.gguf", cmd)
             self.assertIn("CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES=1", cmd)
             self.assertIn("-m /m/nail.gguf", servidor._launch_cmd("0", 8087, 32768, 1, "/tmp/p", "/tmp/l"))
-        self.assertEqual(C.REMOTE_MODEL_PATH_STM, __import__("os").environ.get("REMOTE_MODEL_PATH_STM", "").strip())
+        # [PARCHE31] el .env manda salvo elección en la consola (BODY/servidores.json)
+        env_stm = __import__("os").environ.get("REMOTE_MODEL_PATH_STM", "").strip()
+        if "model" not in C.load_server_choices().get("stm", {}):
+            self.assertEqual(C.REMOTE_MODEL_PATH_STM, env_stm)

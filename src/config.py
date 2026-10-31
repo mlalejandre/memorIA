@@ -96,6 +96,11 @@ REMOTE_MODEL_PATH = os.getenv("REMOTE_MODEL_PATH", "")
 # [PARCHE30] modelo propio para el servidor que RESPONDE (STM, GPU 1); vacío = el mismo que REMOTE_MODEL_PATH.
 # La memoria larga (ingesta y juez del banco) sigue con REMOTE_MODEL_PATH.
 REMOTE_MODEL_PATH_STM = os.getenv("REMOTE_MODEL_PATH_STM", "").strip()
+# [PARCHE31] ídem para la memoria larga (GPU 0); vacío = REMOTE_MODEL_PATH. REMOTE_MODELS_DIR: carpetas del
+# servidor donde buscar .gguf para el selector de modelos (separadas por comas; vacío = la carpeta madre de los
+# modelos que ya conoces, p. ej. /mnt/IA/models para /mnt/IA/models/nail-35b/x.gguf).
+REMOTE_MODEL_PATH_LTM = os.getenv("REMOTE_MODEL_PATH_LTM", "").strip()
+REMOTE_MODELS_DIR = os.getenv("REMOTE_MODELS_DIR", "").strip()
 REMOTE_MODEL_ALIAS = os.getenv("REMOTE_MODEL_ALIAS", "local-model")
 REMOTE_THREADS = _int("REMOTE_THREADS", "8")
 SERVER_AUTOSTART = _flag("SERVER_AUTOSTART", "0")
@@ -335,3 +340,58 @@ RERANK_MIN = _float("RERANK_MIN", "0.5")             # cross: puntuación 0-1 m�
 RERANK_NONE = os.getenv("RERANK_NONE", "tentative").strip().lower()   # si nada responde: tentative | abstain
 RERANK_SIGMOID = os.getenv("RERANK_SIGMOID", "1")     # llama-server devuelve logits: se pasan a 0-1
 RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", "60")
+
+
+# ============================================================
+# [PARCHE31] SERVIDORES ELEGIDOS DESDE LA CONSOLA (panel «Modelos y GPUs» o scripts/modelos.py)
+# Se guardan en BODY/servidores.json y PISAN al .env, porque son la elección más reciente del usuario. Solo se
+# guarda lo que difiere del .env; elegir de nuevo lo del .env borra la entrada. HMEM_IGNORE_SERVER_CHOICES=1 la ignora.
+# ============================================================
+SERVERS_CHOICE_FILE = BODY / "servidores.json"
+ENV_SERVER_DEFAULTS = {
+    "ltm": {"model": REMOTE_MODEL_PATH_LTM or REMOTE_MODEL_PATH, "gpu": str(GPU0_INDEX), "ctx": REMOTE_CTX_GPU0},
+    "stm": {"model": REMOTE_MODEL_PATH_STM or REMOTE_MODEL_PATH, "gpu": str(GPU1_INDEX),
+            "ctx": SLOT_CTX_GPU1 * max(1, PARALLEL_SLOTS_GPU1)},
+    "emb": {"model": EMB_MODEL_PATH, "gpu": str(GPU2_INDEX), "ctx": EMB_CTX},
+}
+
+
+def load_server_choices() -> dict:
+    import json as _json
+    try:
+        data = _json.loads(SERVERS_CHOICE_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in data.items() if k in ENV_SERVER_DEFAULTS and isinstance(v, dict)} \
+        if isinstance(data, dict) else {}
+
+
+def apply_server_choice(role: str, choice: dict) -> None:
+    """Aplica una elección a este proceso (ruta del modelo, GPU y contexto)."""
+    g = globals()
+    model, gpu, ctx = choice.get("model"), choice.get("gpu"), choice.get("ctx")
+    if role == "ltm":
+        if model:
+            g["REMOTE_MODEL_PATH_LTM"] = str(model)
+        if gpu is not None:
+            g["GPU0_INDEX"] = str(gpu)
+        if ctx:
+            g["REMOTE_CTX_GPU0"] = int(ctx)
+    elif role == "stm":
+        if model:
+            g["REMOTE_MODEL_PATH_STM"] = str(model)
+        if gpu is not None:
+            g["GPU1_INDEX"] = str(gpu)
+        if ctx:
+            g["SLOT_CTX_GPU1"] = max(1024, int(ctx) // max(1, PARALLEL_SLOTS_GPU1))
+    elif role == "emb" and gpu is not None:
+        g["GPU2_INDEX"] = str(gpu)
+
+
+if not _flag("HMEM_IGNORE_SERVER_CHOICES", "0"):
+    for _role, _choice in load_server_choices().items():
+        try:
+            apply_server_choice(_role, _choice)
+        except (TypeError, ValueError):
+            pass
+

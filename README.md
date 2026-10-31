@@ -120,6 +120,7 @@ Without installing, running the scripts from the project root keeps working.
 - **`SERVER_AUTOSTART=1` with a local `SERVER_IP` needs a POSIX shell (Linux, macOS or WSL2).** On native Windows use `SERVER_AUTOSTART=0` and start your LLM server yourself, or point `SERVER_IP` at a remote Linux host (launched over SSH).
 - Chat answers stream token by token (Server-Sent Events); bulk ingestion reports progress block by block.
 - To dump the project for sharing/review: `python3 scripts/estructura.py`.
+- **Models and GPUs.** The console panel "🧩 Modelos y GPUs" (or `python3 scripts/modelos.py`) shows the GPUs, the server on each port and the `.gguf` files available, and switches a server's model, GPU or context: same command line with only `-m`, `-c` and the GPU changed, automatic return to the previous one if the new model does not load. The choice is saved in `body/servidores.json` and overrides `.env`. It needs passwordless SSH to `SERVER_IP` (`ssh-copy-id`), or a local `SERVER_IP`.
 
 ### 🔌 Connecting to LLM Backends (Ollama, vLLM or llama-server)
 
@@ -191,6 +192,8 @@ Everything is an environment variable or a line in `.env` (see [`.env.example`](
 | `AGENT_THINK_EXTRA_TOKENS` | `4096` | tokens added to the answer limit when the agent thinks (reasoning counts against it) |
 | `DOC_SELF_CONTAINED` | `0` | document ingestion (console panel) writes self-contained facts: each names its event or subject and the absolute date when the text allows; conversation ingestion is unchanged |
 | `REMOTE_MODEL_PATH_STM` | — | optional `.gguf` for the answering server (GPU 1) only; memory ingestion keeps `REMOTE_MODEL_PATH` |
+| `REMOTE_MODEL_PATH_LTM` | — | optional `.gguf` for the long-term-memory server (GPU 0); empty = `REMOTE_MODEL_PATH` |
+| `REMOTE_MODELS_DIR` | — | folders on the server with `.gguf` files for the model selector (comma-separated); empty = parent folder of the known models |
 | `ATTRIB_EVENTS` | `0` | experimental prompt rule: check that a fact belongs to the event, date or document asked about (using its source) and say it is not recorded instead of filling the gap |
 | `LLM_CACHE_PROMPT` | `1` | reuse the server's KV cache for a shared prompt prefix (faster; with several slots, temperature-0 answers may vary slightly) |
 | `EPI_DIVERSITY` / `EPI_PER_DAY` | `off` / `3` | experimental: at most N prompt episodes per day, from a deeper candidate pool |

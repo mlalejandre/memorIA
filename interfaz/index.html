@@ -109,6 +109,7 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
     <button onclick="openExplorer()" style="border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,.15)">🗂️ Gestor & Explorador de Memoria</button>
     <button onclick="openModal('modal-tree')">🌲 Ver Árbol LTM</button>
     <button onclick="openModal('modal-ingest')">📥 Ingestar Libro/Paper</button>
+    <button onclick="openServers()" style="border-color:var(--green);color:var(--green);background:rgba(16,185,129,.12)">🧩 Modelos y GPUs</button>   <!-- [PARCHE31] -->
     <button onclick="openDebug()">🛠️ Diagnóstico & Bugs</button>
   </div>
 </header>
@@ -293,6 +294,29 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
   </div>
 </div>
 
+<!-- [PARCHE31] Modal: modelos y GPUs de cada servidor -->
+<div class="modal" id="modal-servers" onclick="if(event.target===this) closeModal('modal-servers')">
+  <div class="modal-c" style="width:1080px">
+    <div class="modal-h">
+      <div>
+        <h3>🧩 Modelos y GPUs del servidor</h3>
+        <p style="font-size:.72rem;color:var(--mu);margin:0">Elige qué modelo carga cada servidor, en qué GPU y con cuánto contexto. Si el nuevo no arranca, vuelve solo al anterior. La elección se guarda y pisa al .env.</p>
+      </div>
+      <div class="row">
+        <button onclick="loadServers()">↻ Actualizar</button>
+        <button onclick="closeModal('modal-servers')">Cerrar</button>
+      </div>
+    </div>
+    <div class="modal-b">
+      <div id="srv-gpus" class="box" style="font-size:.74rem;line-height:1.6">Consultando el servidor…</div>
+      <div id="srv-warn" style="font-size:.72rem;color:var(--amber)"></div>
+      <div id="srv-roles" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px"></div>
+      <div class="sec mu">Registro del último cambio</div>
+      <div id="srv-log" class="box" style="height:150px;white-space:pre-wrap"></div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal 3: Diagnóstico -->
 <div class="modal" id="modal-debug" onclick="if(event.target===this) closeModal('modal-debug')">
   <div class="modal-c">
@@ -452,7 +476,10 @@ async function poll() {
     const srvOk = !!s.server_ready;
     $('b-srv').className = 'badge ' + (srvOk ? 'ok' : 'warn');
     $('b-srv').innerHTML = '<span class="pulse-dot"></span>' + (srvOk ? 'Servidores LLM ✓' : 'Servidores sin verificar');
-    if (s.system_info) $('sub-info').textContent = 'LTM :' + s.system_info.gpu0_port + ' · STM :' + s.system_info.gpu1_port + ' · ' + s.system_info.model;
+    if (s.system_info) {   // [PARCHE31] con el modelo que de verdad tiene cargado cada servidor
+      const si = s.system_info;
+      $('sub-info').textContent = 'LTM :' + si.gpu0_port + (si.ltm_model ? ' ' + si.ltm_model : '') + ' · STM :' + si.gpu1_port + (si.stm_model ? ' ' + si.stm_model : ' · ' + si.model);
+    }
     const m = s.stm, l = s.ltm;
 
     if($('hdr-cartridge-name')) {
@@ -703,6 +730,96 @@ async function act(a) {
   if(a === 'reset_stm' && !confirm('¿Vaciar la memoria a corto plazo? (La memoria larga no se toca)')) return;
   await fetch('/api/' + a, {method:'POST'});
   polle(); poll();
+}
+
+// ==================== [PARCHE31] MODELOS Y GPUs ====================
+let _srvInv = null, _srvBusy = false;
+async function openServers() { openModal('modal-servers'); await loadServers(); }
+function gb(mb) { return (mb == null ? '?' : (mb / 1024).toFixed(1)); }
+async function loadServers() {
+  if(_srvBusy) return;
+  $('srv-gpus').textContent = 'Consultando el servidor (SSH)…';
+  $('srv-roles').innerHTML = '';
+  $('srv-warn').textContent = '';
+  try {
+    const inv = await (await fetch('/api/servers')).json();
+    _srvInv = inv;
+    renderServers(inv);
+  } catch(e) { $('srv-gpus').textContent = '⚠️ ' + e; }
+}
+function renderServers(inv) {
+  if(inv.error) {
+    $('srv-gpus').innerHTML = '⚠️ ' + esc(inv.error) + (inv.hint ? '<br>💡 ' + esc(inv.hint) : '');
+    return;
+  }
+  const gpus = inv.gpus || [];
+  $('srv-gpus').innerHTML = gpus.length ? gpus.map(g => '<b>GPU ' + esc(g.index) + '</b> · ' + esc(g.name) + ' · ' +
+      gb(g.used_mb) + ' / ' + gb(g.total_mb) + ' GB en uso · ' + (g.servers.length ? esc(g.servers.join(', ')) : 'sin servidores de la memoria')).join('<br>')
+    : 'Sin datos de GPU (nvidia-smi no responde).';
+  $('srv-warn').innerHTML = (inv.warnings || []).map(w => '⚠ ' + esc(w)).join('<br>');
+  const models = inv.models || [];
+  const cards = [];
+  for(const role of ['stm', 'ltm', 'emb']) {
+    const s = (inv.servers || {})[role];
+    if(!s) continue;
+    const state = s.up ? '<span class="badge ok">activo</span>' : '<span class="badge warn">' + (s.pid ? 'no responde' : 'parado') + '</span>';
+    const now = esc(s.model_name || '?') + ' · ' + (s.gpu != null ? 'GPU ' + esc(s.gpu) + (s.gpu_name ? ' (' + esc(s.gpu_name) + ')' : '') : 'GPU ?') +
+      (s.ctx ? ' · contexto ' + s.ctx : '') + (s.slots ? ' · ' + s.slots + ' slots' : '') + (s.vram_mb ? ' · ' + gb(s.vram_mb) + ' GB' : '');
+    let html = '<div class="stat-card"><div class="stat-header"><span class="stat-title">' + esc(s.label) + ' · :' + s.port + '</span>' + state + '</div>' +
+      '<div class="stat-sub" style="font-family:var(--mono)">Ahora: ' + now + (s.chosen ? ' · <span style="color:var(--cyan)">elegido aquí</span>' : '') + '</div>';
+    const sel = 'background:var(--inp);color:var(--tx);border:1px solid var(--bd);padding:5px 8px;border-radius:6px;font-size:.75rem;width:100%';
+    if(role !== 'emb') {
+      const opts = models.filter(m => m.kind === 'llm' || m.path === s.model);
+      if(s.model && !opts.some(m => m.path === s.model)) opts.unshift({path: s.model, name: s.model_name, gb: null});
+      html += '<label class="stat-sub">Modelo</label><select id="srv-model-' + role + '" style="' + sel + '">' +
+        opts.map(m => '<option value="' + esc(m.path) + '"' + (m.path === s.model ? ' selected' : '') + '>' + esc(m.name) +
+          (m.gb != null ? ' · ' + m.gb + ' GB' : '') + (m.parts > 1 ? ' · ' + m.parts + ' partes' : '') +
+          (s.env_default && m.path === s.env_default.model ? ' · .env' : '') + '</option>').join('') + '</select>';
+    }
+    const curGpu = s.gpu != null ? String(s.gpu) : '';
+    html += '<label class="stat-sub">GPU</label><select id="srv-gpu-' + role + '" style="' + sel + '">' +
+      (curGpu ? '' : '<option value="" selected>la de ahora</option>') +
+      gpus.map(g => '<option value="' + esc(g.index) + '"' + (String(g.index) === curGpu ? ' selected' : '') + '>GPU ' + esc(g.index) + ' · ' + esc(g.name) +
+        ' · libres ' + gb(g.total_mb - g.used_mb + (String(g.index) === curGpu && s.vram_mb ? s.vram_mb : 0)) + ' GB</option>').join('') + '</select>';
+    if(role !== 'emb') {
+      html += '<label class="stat-sub">Contexto total (tokens' + (role === 'stm' && s.slots ? ', repartido entre ' + s.slots + ' slots' : '') + ')</label>' +
+        '<input id="srv-ctx-' + role + '" type="number" min="2048" step="1024" value="' + (s.ctx || (s.config && s.config.ctx) || '') + '" style="' + sel + '">';
+    }
+    const note = role === 'ltm' ? 'Cambia cómo se extraen los hechos NUEVOS y el juez del banco; lo ya guardado no cambia.'
+      : role === 'emb' ? 'El modelo de embeddings no se cambia aquí (los vectores guardados dejarían de servir); solo la GPU.'
+      : 'El agente responde con este modelo; la memoria no cambia.';
+    html += '<div class="stat-sub">' + note + '</div><div class="row" style="justify-content:flex-end">' +
+      '<button class="srv-apply" onclick="applyServer(\'' + role + '\')" style="border-color:var(--green);color:var(--green)">Aplicar</button></div></div>';
+    cards.push(html);
+  }
+  $('srv-roles').innerHTML = cards.join('');
+}
+async function applyServer(role, force) {
+  if(_srvBusy) return;
+  const body = {role: role, gpu: $('srv-gpu-' + role).value, force: !!force};
+  if($('srv-model-' + role)) body.model = $('srv-model-' + role).value;
+  if($('srv-ctx-' + role) && $('srv-ctx-' + role).value) body.ctx = parseInt($('srv-ctx-' + role).value, 10);
+  if(!force && !confirm('Se parará el servidor ' + role.toUpperCase() + ' y se cargará lo elegido (1-3 min). Mientras tanto el agente no responde y el ciclo de sueño queda en pausa.\n\n¿Seguir?')) return;
+  _srvBusy = true;
+  document.querySelectorAll('.srv-apply').forEach(b => b.disabled = true);
+  const lg = $('srv-log');
+  lg.textContent = '';
+  const add = t => { lg.textContent += t + '\n'; lg.scrollTop = lg.scrollHeight; };
+  let needForce = null;
+  try {
+    const resp = await fetch('/api/servers/switch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    if(!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
+    await readSSE(resp, ev => {
+      if(ev.event === 'step') add('· ' + ev.text);
+      else if(ev.event === 'done') add('✓ ' + ev.text);
+      else if(ev.event === 'error') { add('⚠️ ' + ev.error + (ev.hint ? '\n💡 ' + ev.hint : '')); if(ev.need_force) needForce = ev.error; }
+    });
+  } catch(e) { add('⚠️ ' + e); }
+  _srvBusy = false;
+  document.querySelectorAll('.srv-apply').forEach(b => b.disabled = false);
+  if(needForce && confirm(needForce + '\n\nLa caché del contexto también ocupa VRAM. ¿Intentarlo de todos modos? (si no cabe, vuelve solo al anterior)')) return applyServer(role, true);
+  await loadServers();
+  poll();
 }
 
 // ==================== GESTOR MULTI-CARTUCHO ====================

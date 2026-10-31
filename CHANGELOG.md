@@ -2,6 +2,10 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE31] -->
+- Choose the model, GPU and context of each server from the web console (panel "🧩 Modelos y GPUs") or from the terminal (`python3 scripts/modelos.py`). The panel lists the GPUs, which server runs on which GPU and the `.gguf` files on the server; a change restarts that server with its current command line, changing only `-m`, `-c` and the GPU, waits for `/health`, and goes back to the previous command line if the new model does not load. The agent is paused while a server changes. The choice is saved in `body/servidores.json` and overrides `.env`; choosing the `.env` values again removes it. The embedding model cannot be changed there (stored vectors depend on it), only its GPU.
+- `REMOTE_MODEL_PATH_LTM` (long-term-memory model, defaults to `REMOTE_MODEL_PATH`) and `REMOTE_MODELS_DIR` (where to look for `.gguf` files; defaults to the parent folder of the known models).
+- Patch 30 not measured yet: the answering-model comparison is carried over to this patch (`python3 parche.py --solo-eval --stm GSQ-RCO-IQ3_S`), which now switches the answering server itself and switches it back afterwards.
 <!-- [PARCHE30] -->
 - `REMOTE_MODEL_PATH_STM`: the answering server (GPU 1) can run a different model from the long-term-memory server, which keeps doing ingestion (and judging in the benchmark). Server launch commands set `CUDA_DEVICE_ORDER=PCI_BUS_ID`, so GPU indexes match `nvidia-smi`.
 - The cartridge exam gains the mode `ref`: the same prompt answered by the long-term-memory server, to compare two answering models on exactly the same memory.

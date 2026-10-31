@@ -26,6 +26,11 @@ def _boot(agent: Agent) -> None:
         agent.log("✓ Ambas GPUs verificadas y listas.")
     except Exception as exc:
         agent.log(f"❌ Error al iniciar servidores: {exc}")
+    try:   # [PARCHE31] nombre del modelo de cada servidor para la cabecera
+        import modelos
+        modelos.refresh_cache()
+    except Exception:
+        pass
     
     agent.start_background_tasks()
     agent.log(f"Memoria a corto plazo cargada: {agent.stm.total_tokens()} tokens.")
