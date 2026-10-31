@@ -839,7 +839,11 @@ class TestThinkingModes(unittest.TestCase):  # [PARCHE24]
         self.assertEqual(pensar.decide("Hola", "on"), (True, "activado siempre"))
         self.assertEqual(pensar.decide("¿Cuándo fue Ana a Lisboa?", "auto"), (True, "fechas"))
         self.assertEqual(pensar.decide("When did Gina go to a dance class?", "auto"), (True, "fechas"))
-        self.assertEqual(pensar.decide("¿Cuántas semanas duró el viaje?", "auto"), (True, "fechas"))
+        self.assertEqual(pensar.decide("¿Cuántas semanas duró el viaje?", "auto"), (False, "duración"))   # [PARCHE26]
+        self.assertEqual(pensar.decide("How long ago was Caroline's 18th birthday?", "auto"), (False, "duración"))
+        self.assertEqual(pensar.decide("How long has Melanie been creating art?", "auto"), (False, "duración"))
+        self.assertEqual(pensar.decide("¿Hace cuánto adopté a Thor?", "auto"), (False, "duración"))
+        self.assertEqual(pensar.decide("¿En qué fecha adopté a Thor?", "auto"), (True, "fechas"))
         self.assertEqual(pensar.decide("¿Cuántas veces fue a la playa?", "auto"), (True, "recuento"))
         self.assertEqual(pensar.decide("How many pets does Melanie have?", "auto"), (True, "recuento"))
         self.assertEqual(pensar.decide("Which city have both Jean and John visited?", "auto"), (True, "combinar datos"))
@@ -878,6 +882,7 @@ class TestThinkingModes(unittest.TestCase):  # [PARCHE24]
             self.assertEqual(_StubAgent.last_think, "auto")
             html = (ROOT / "interfaz" / "index.html").read_text(encoding="utf-8")
             self.assertIn('id="think"', html)
+            self.assertIn('value="default"', html)
             self.assertIn("ev.event === 'thinking'", html)
         finally:
             srv.shutdown()

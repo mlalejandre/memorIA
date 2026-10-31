@@ -210,7 +210,8 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
         <button class="send" id="send" onclick="sendMsg()">Enviar al Agente</button>
         <!-- [PARCHE24] pensamiento del agente: off / auto / on -->
         <label for="think" style="font-size:.72rem;color:var(--mu)" title="Pensar antes de responder: más lento, a veces más preciso en fechas, recuentos y comparaciones">🧠 Pensar</label>
-        <select id="think" onchange="saveThink()" title="No: responde directo · Auto: el agente decide (fechas, recuentos, comparaciones) · Siempre: piensa en cada respuesta" style="background:var(--inp);color:var(--tx);border:1px solid var(--bd);padding:4px 8px;border-radius:6px;font-size:.75rem">
+        <select id="think" onchange="saveThink()" title="Por defecto: lo que diga AGENT_THINK · No: responde directo · Auto: el agente decide (fechas, recuentos, comparaciones) · Siempre: piensa en cada respuesta" style="background:var(--inp);color:var(--tx);border:1px solid var(--bd);padding:4px 8px;border-radius:6px;font-size:.75rem">
+          <option value="default">Por defecto</option>   <!-- [PARCHE26] = AGENT_THINK del .env -->
           <option value="off">No</option>
           <option value="auto">Auto</option>
           <option value="on">Siempre</option>
@@ -559,7 +560,7 @@ function saveThink() {   // [PARCHE24] preferencia del selector «Pensar» (solo
   try { localStorage.setItem('hmem_think', $('think').value); } catch(e) {}
 }
 function loadThink() {
-  try { const v = localStorage.getItem('hmem_think'); if(v && ['off','auto','on'].includes(v)) $('think').value = v; } catch(e) {}
+  try { const v = localStorage.getItem('hmem_think'); if(v && ['default','off','auto','on'].includes(v)) $('think').value = v; } catch(e) {}
 }
 document.addEventListener('DOMContentLoaded', loadThink);
 
@@ -595,7 +596,8 @@ async function sendMsg() {
   $('msgs').appendChild(bubble);
   let acc = '', got = false;
   try {
-    const think = $('think') ? $('think').value : 'off';   // [PARCHE24]
+    const tv = $('think') ? $('think').value : 'default';   // [PARCHE24] [PARCHE26] «Por defecto» = AGENT_THINK
+    const think = tv === 'default' ? null : tv;
     const resp = await fetch('/api/chat/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:t, think:think})});
     if(!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
     await readSSE(resp, ev => {

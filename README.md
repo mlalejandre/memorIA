@@ -26,7 +26,7 @@ The agent keeps **two memories queried in parallel** on every message:
 - **Conversation → memory.** Facts in what the user says are extracted by the LLM into atomic statements and queued for storage in the background (`LTM_INGEST_USER`).
 - **Provenance.** Every cell keeps its source (book/paper detected from the header, or the timestamped conversation) and answers cite it.
 - **Local web console** at `http://127.0.0.1:8765` (UI in Spanish): chat, live pipeline, tree viewer, visual explorer/editor of the ontology, bulk ingestion of chapters/papers, diagnostics.
-- **Optional thinking.** A "🧠 Pensar" selector next to Send (No / Auto / Siempre, default from `AGENT_THINK`) lets the model reason before the final answer. In Auto it thinks only when the question asks it to compute from memory (dates and durations, counts, comparisons) and shows why; it is about five times slower per answer that thinks.
+- **Optional thinking.** A "🧠 Pensar" selector next to Send (Por defecto = `AGENT_THINK` / No / Auto / Siempre) lets the model reason before the final answer. In Auto it thinks only when the question asks it to compute from memory (dates, counts, comparisons; not durations such as "how long ago") and shows why; it is about five times slower per answer that thinks.
 
 - **Tree navigation.** Retrieval also descends the tree with a beam search (`MEM_NAV`, `MEM_BEAM`). By default the branch choice is **vectorial/lexical, with no LLM call** (`MEM_NAV_LLM=0`); set `MEM_NAV_LLM=1` to let the LLM pick branches (slower, up to `MEM_NAV_MAX_CALLS` calls).
 - **Episodic memory.** Every message is also stored verbatim in `memoria.db` (`episodes` + FTS5) and never forgotten or summarised; relevant literal snippets that are no longer in the live short-term memory are injected into the prompt (`EPI_ENABLED`, `EPI_LOOKUP_K`). Search it at `/api/episodes?q=...`.
@@ -187,7 +187,7 @@ Everything is an environment variable or a line in `.env` (see [`.env.example`](
 | `RERANK_MODE` | `off` | `llm` = LLM judge re-orders the top 8 and decides relevance; `cross` = bge-reranker-v2-m3 via `llama-server --reranking` (`RERANK_URL`) |
 | `LTM_DIRECT_TOP_K` | `10` | facts injected into the prompt in direct retrieval (measured on LoCoMo: 10 beats 6) |
 | `ANSWER_DIRECT` | `0` | experimental: the answer starts with one sentence that answers exactly what was asked |
-| `AGENT_THINK` | `off` | thinking before the final answer: `off`, `auto` (the agent thinks only for date, counting and comparison questions; the reason is shown) or `on`; the web console can override it per message |
+| `AGENT_THINK` | `off` | thinking before the final answer: `off`, `auto` (the agent thinks only for date, counting and comparison questions, not durations; the reason is shown) or `on`; the web console can override it per message |
 | `AGENT_THINK_EXTRA_TOKENS` | `4096` | tokens added to the answer limit when the agent thinks (reasoning counts against it) |
 | `LLM_CACHE_PROMPT` | `1` | reuse the server's KV cache for a shared prompt prefix (faster; with several slots, temperature-0 answers may vary slightly) |
 | `EPI_DIVERSITY` / `EPI_PER_DAY` | `off` / `3` | experimental: at most N prompt episodes per day, from a deeper candidate pool |

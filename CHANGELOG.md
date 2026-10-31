@@ -1,6 +1,12 @@
 # Changelog
 
 <!-- [PARCHE19] -->
+## Unreleased
+<!-- [PARCHE26] -->
+- `AGENT_THINK=auto` no longer thinks on duration and age questions ("how long…", "how long ago…", "¿hace cuánto…?"): in patch 24 thinking counted from the prompt's current date instead of repeating the duration stated in the memory, and these questions got worse.
+- Web console: the "🧠 Pensar" selector gains "Por defecto" (uses `AGENT_THINK`), now the default choice, so a change of `AGENT_THINK` in `.env` reaches the console.
+- Patch 25 (consolidation v0.3.0a4) accepted: full emulated suite with no new failures, LoCoMo reproduced exactly from cache (0 of 1,986 questions changed), own corpus at 100,108 facts 99.1 % correct / user 100 % / 1 of 31 invented / retrieval P95 446 ms. The embedding call alone took 244-339 ms median that night (it was ≈ 50-100 ms before), which explains the higher retrieval latency and the 83 minutes to vectorise 90,000 facts.
+
 ## 0.3.0a4 (2026-10-30)
 <!-- [PARCHE25] -->
 Consolidation of patches 19-24. Same defaults and answers as 0.3.0a3; the measurement is now reproducible and thinking is an option.
