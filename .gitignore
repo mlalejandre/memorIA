@@ -111,3 +111,4 @@ experiment/locomo_cache/
 /parche*.py
 /limpieza.py
 /proyecto_completo.txt
+experiment/logs/
