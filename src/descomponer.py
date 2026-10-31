@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""descomponer.py — Descomposición de preguntas en subconsultas de búsqueda.  [PARCHE19]
+"""descomponer.py — Descomposición de preguntas en subconsultas de búsqueda.
 
 Por qué: en LoCoMo, las preguntas multi-salto ("¿qué actividades ha hecho X?", "¿qué tienen en común X e Y?")
 necesitan evidencia repartida en sesiones distintas. Con UNA sola consulta, la mitad de esa evidencia queda más
@@ -66,7 +66,7 @@ def clean(question: str, raw: Any, n: int | None = None, min_n: int = 2) -> list
         out.append(s)
         if len(out) >= n:
             break
-    return out if len(out) >= min_n else []   # una sola subconsulta no es una descomposición  [PARCHE20] min_n
+    return out if len(out) >= min_n else []   # una sola subconsulta no es una descomposición min_n
 
 
 def decompose(llm: Any, question: str) -> tuple[list[str], float]:

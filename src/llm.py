@@ -31,12 +31,12 @@ class LLM:
 
     @property
     def last_usage(self) -> dict[str, Any]:
-        """[PARCHE23] Uso de la última respuesta de ESTE hilo: completion_tokens, prompt_tokens, reasoning_chars."""
+        """Uso de la última respuesta de ESTE hilo: completion_tokens, prompt_tokens, reasoning_chars."""
         return dict(getattr(self._local, "usage", None) or {})
 
     def _payload(self, messages: list[dict[str, str]], max_tokens: int | None, temperature: float | None,
                  stream: bool, thinking: bool | None = None, cache_prompt: bool | None = None) -> dict[str, Any]:
-        """[PARCHE23] thinking y cache_prompt por llamada (None = lo que diga la configuración)."""
+        """thinking y cache_prompt por llamada (None = lo que diga la configuración)."""
         return {
             "model": self.model,
             "temperature": C.ANSWER_TEMPERATURE if temperature is None else temperature,

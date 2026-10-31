@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# locomo.py — Benchmark PÚBLICO LoCoMo (Maharana et al., ACL 2024) medido contra el OBJETIVO.  [PARCHE10]
+# locomo.py — Benchmark PÚBLICO LoCoMo (Maharana et al., ACL 2024) medido contra el OBJETIVO.
 #
 # Por qué: hasta v0.3.0a1 todo se midió con un examen escrito por nosotros mientras ajustábamos el sistema.
 # LoCoMo es ajeno: 10 conversaciones largas (19-32 sesiones cada una) entre dos personas, con 1.986 preguntas
@@ -33,21 +33,21 @@
 #   HMEM_LOCOMO_REINGEST 1 = descarta la caché y reingiere
 #   HMEM_LOCOMO_DATA     ruta a un locomo10.json local (sin descarga)
 #   HMEM_LOCOMO_DIR      carpeta de caché (defecto experiment/locomo_cache)
-#   HMEM_LOCOMO_DESCOMP  1 = diagnóstico de descomposición de preguntas (techo de cobertura; ver [PARCHE19])
+#   HMEM_LOCOMO_DESCOMP  1 = diagnóstico de descomposición de preguntas (techo de cobertura; ver descomponer.py)
 #   HMEM_DESCOMP_FRAC    fracción de preguntas de un salto / temporales que entran en ese diagnóstico (def. 0.12)
-#   HMEM_LOCOMO_REFINAR  1 = diagnóstico de diversidad por día y 2.ª pasada (techo de cobertura; ver [PARCHE20])
-#   [PARCHE22] banco rápido y reproducible:
+#   HMEM_LOCOMO_REFINAR  1 = diagnóstico de diversidad por día y 2.ª pasada (techo de cobertura; ver refinar.py)
+#   banco rápido y reproducible:
 #   HMEM_ANSWER_TEMP     temperatura de las respuestas del agente (defecto 0: determinista y cacheable)
 #   HMEM_JUDGE_URL       servidor del juez (defecto: el de la memoria larga, ocioso mientras el agente responde)
 #   HMEM_JUDGE_WORKERS   juicios en paralelo (defecto 2) · HMEM_JUDGE_VOTES votos por juicio (defecto 1, T=0)
 #   HMEM_LOCOMO_NOCACHE  1 = ni lee ni escribe la caché de respuestas/juicios (para medir el ruido del servidor)
 #   HMEM_FIXED_NOW       «fecha actual» del prompt (defecto 29/10/2026 12:00): sin ella el prompt cambia cada minuto
 #   HMEM_E2E_WORKERS     (solo otras suites de prueba.py)
-#   [PARCHE24] HMEM_ANSWER_WORKERS respuestas del agente en paralelo (defecto 1) y HMEM_ANSWER_CACHE_PROMPT (defecto 0):
+#   HMEM_ANSWER_WORKERS respuestas del agente en paralelo (defecto 1) y HMEM_ANSWER_CACHE_PROMPT (defecto 0):
 #                        con 1 petición a la vez y sin caché de prompt el agente repite el 100 % de las respuestas (P23)
-#   [PARCHE23] razonamiento y determinismo del agente:
+#   razonamiento y determinismo del agente:
 #   HMEM_ANSWER_THINK    off | on (=1) | auto: modo de pensamiento del agente (antes, una sonda comprueba que el
-#                        servidor lo active por petición). auto = src/pensar.py decide por pregunta [PARCHE24]
+#                        servidor lo active por petición). auto = src/pensar.py decide por pregunta
 #   HMEM_THINK_MAX_TOKENS  límite de tokens (pensamiento + respuesta) con HMEM_ANSWER_THINK=1 (defecto 4096)
 #   HMEM_LOCOMO_DETERMINISMO  1 = diagnóstico: cada pregunta se responde 2 veces en 4 configuraciones (1 o 2 en
 #                        paralelo · caché de prompt sí/no) y se mide cuántas respuestas salen idénticas; sin juez
@@ -68,9 +68,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 import config as C
-import descomponer  # [PARCHE19]
-import pensar  # [PARCHE24]
-import refinar  # [PARCHE20]
+import descomponer
+import pensar
+import refinar
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "locomo-v1"
@@ -191,7 +191,7 @@ def subsample(qa: list[dict], maxq: int, seed: int = 10) -> list[dict]:
     return [q for i, q in enumerate(qa) if i in keep]
 
 
-# ---- [PARCHE11] diagnóstico de identidad del sujeto y de top-K
+# ---- diagnóstico de identidad del sujeto y de top-K
 def subject_of(question: str, a: str, b: str) -> str | None:
     """Persona por la que se pregunta: el interlocutor que aparece ANTES en la pregunta (admite 'Mel' por 'Melanie')."""
     best: tuple[int, str] | None = None
@@ -247,7 +247,7 @@ def coverage(ev: set[str], cells: list[Any], epis: list[dict], cell_dia: dict[st
     return len(ev & got) / len(ev)
 
 
-# ---- [PARCHE12] comparación pareada con una ejecución anterior y auditoría automática de invenciones
+# ---- comparación pareada con una ejecución anterior y auditoría automática de invenciones
 def sign_p(b: int, c: int) -> float:
     """Test de signos exacto bilateral (McNemar exacto) sobre los pares discordantes."""
     n = b + c
@@ -296,7 +296,7 @@ def trap_source(trap: str, facts: list[str], episodes: list[str]) -> str:
     return "episódica" if e >= 0.5 and e >= f else ("hechos" if f >= 0.5 else "ninguno claro")
 
 
-# ---- [PARCHE15] profundidad de la evidencia (solo recuperación, sin LLM)
+# ---- profundidad de la evidencia (solo recuperación, sin LLM)
 DEPTH_GRID = [(10, 6), (10, 10), (10, 20), (20, 10), (20, 20), (30, 30), (50, 50)]   # (hechos K, episodios E)
 
 
@@ -332,7 +332,7 @@ def depth_bucket(r: int | None) -> str:
         "21-50" if r <= 50 else "51-200")
 
 
-# ---- [PARCHE19] descomposición de la pregunta: caché de subconsultas, oráculo y diagnóstico de techo
+# ---- descomposición de la pregunta: caché de subconsultas, oráculo y diagnóstico de techo
 DECOMP_DIAG_CATS = (1, 3)   # multi-salto e inferencia: todas sus preguntas entran en el diagnóstico
 
 
@@ -445,7 +445,7 @@ def decomp_decision(s: dict[str, Any]) -> tuple[str, str]:
     return "NO-GO (la descomposición no alcanza el techo)", why
 
 
-# ---- [PARCHE20] diversidad por día y segunda pasada: caché, resumen por variante y regla de decisión
+# ---- diversidad por día y segunda pasada: caché, resumen por variante y regla de decisión
 class RefineCache:
     """Consultas de la 2.ª pasada por (pregunta, contexto de la 1.ª pasada), en disco: el experimento reutiliza las
     del diagnóstico mientras la 1.ª pasada no cambie. Se invalida si cambian el prompt o el modelo."""
@@ -742,8 +742,8 @@ def ingest(tree: Any, sample: dict, size: int, state: dict[str, Any],
 
 def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str],
              subs: list[str] | None = None, t_decomp: float = 0.0, diversify: bool | None = None) -> dict[str, Any]:
-    # [PARCHE19] subs = subconsultas (descomposición u oráculo); t_decomp = segundos de la llamada que las generó
-    # [PARCHE20] diversify: None = lo que diga la configuración (EPI_DIVERSITY); True/False lo fuerza
+    # subs = subconsultas (descomposición u oráculo); t_decomp = segundos de la llamada que las generó
+    # diversify: None = lo que diga la configuración (EPI_DIVERSITY); True/False lo fuerza
     kw = {"extra_queries": list(subs)} if subs else {}
     t0 = time.perf_counter()
     r = tree.recall(question, reinforce=False, synthesize=False, **kw)
@@ -755,8 +755,8 @@ def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]
     hit = lambda ids: any(evidence & set(cell_dia.get(str(i), [])) for i in ids)
     hit_epi = lambda eps: any(epi_dia.get(str(e.get("id"))) in evidence for e in eps)
     injected = list(r.get("cells") or []) if r.get("found") else []
-    n_epi = max(1, int(getattr(C, "EPI_PROMPT_K", 5)))   # [PARCHE16] antes [:5] fijo, como el agente
-    top_sim = None   # [PARCHE11] similitud coseno del mejor hecho (fuera del tiempo medido)
+    n_epi = max(1, int(getattr(C, "EPI_PROMPT_K", 5)))   # antes [:5] fijo, como el agente
+    top_sim = None   # similitud coseno del mejor hecho (fuera del tiempo medido)
     emb = getattr(tree, "emb", None)
     if emb is not None:
         try:
@@ -769,11 +769,11 @@ def retrieve(tree: Any, question: str, state: dict[str, Any], evidence: set[str]
         "top_sim": top_sim,
         "ev_rank": evidence_rank(r.get("candidates") or [], cell_dia, evidence),
         "coverage": coverage(evidence, injected, epi[:n_epi], cell_dia, epi_dia),
-        "epi_in": epi[:n_epi],   # [PARCHE16] los episodios que muestra _build_system (EPI_PROMPT_K)
+        "epi_in": epi[:n_epi],   # los episodios que muestra _build_system (EPI_PROMPT_K)
         "lines": fact_lines(r.get("answer", "")) if r.get("found") else [],
         "r": r, "epi": epi, "ms": (t2 - t0 + t_decomp) * 1000, "ms_recall": (t1 - t0) * 1000,
-        "ms_descomp": t_decomp * 1000, "subs": list(subs or []),   # [PARCHE19]
-        "sessions": len({str(state["epi_dia"].get(str(e.get("id")), "?")).split(":")[0] for e in epi[:n_epi]}),  # [PARCHE20]
+        "ms_descomp": t_decomp * 1000, "subs": list(subs or []),
+        "sessions": len({str(state["epi_dia"].get(str(e.get("id")), "?")).split(":")[0] for e in epi[:n_epi]}),
         "state": "rechaza" if not r.get("found") else ("tentativa" if r.get("tentative") else "firme"),
         "in_ctx": bool(evidence) and (hit(injected) or hit_epi(epi[:n_epi])),
         "in_cand": bool(evidence) and (hit(r.get("candidates") or []) or hit_epi(epi)),
@@ -807,7 +807,7 @@ LOCOMO_NEG_JUDGE = (
     'Devuelve SOLO JSON: {"inventa": true} o {"inventa": false}.')
 
 
-# ---- [PARCHE22] banco rápido: caché persistente, huella del servidor y juez determinista
+# ---- banco rápido: caché persistente, huella del servidor y juez determinista
 class BenchCache:
     """Respuestas y veredictos en SQLite (experiment/locomo_cache/banco.sqlite). La clave incluye TODO lo que
     determina el resultado (huella del servidor, temperatura, prompt de sistema, pregunta...): si el prompt de una
@@ -903,14 +903,14 @@ def judge_once(llm: Any, system: str, user: str, field: str, tries: int = 2) -> 
     return None
 
 
-# ---- [PARCHE23] determinismo del agente y modo de pensamiento
+# ---- determinismo del agente y modo de pensamiento
 DET_CONFIGS = ((2, True), (1, True), (2, False), (1, False))   # (respuestas en paralelo, cache_prompt)
 THINK_PROBE = ("Un tren sale a las 9:40 y llega a las 13:15. ¿Cuántos minutos dura el viaje? "
                "Responde solo con el número.")
 
 
 def gen_tag(workers: int, cache_prompt: bool) -> str:
-    """[PARCHE24] cómo se generaron las respuestas (entra en la clave de la caché y en la huella del resultado)."""
+    """cómo se generaron las respuestas (entra en la clave de la caché y en la huella del resultado)."""
     return f"w{int(workers)}cp{int(bool(cache_prompt))}"
 
 
@@ -1039,7 +1039,7 @@ def _vote(chat: Any, system: str, user: str, key: str) -> bool | None:
 
 
 def report_refine(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dict[str, Any]:
-    """[PARCHE20] Imprime el diagnóstico de diversidad / 2.ª pasada, lo guarda en JSON y aplica la regla."""
+    """Imprime el diagnóstico de diversidad / 2.ª pasada, lo guarda en JSON y aplica la regla."""
     s = refine_summary(rows)
     print(f"\n   DIVERSIDAD POR DÍA Y 2.ª PASADA · techo de cobertura sin LLM de respuesta ({len(rows)} preguntas con "
           f"evidencia; mismo presupuesto: {getattr(C, 'LTM_DIRECT_TOP_K', 10)} hechos + {getattr(C, 'EPI_PROMPT_K', 20)} "
@@ -1083,7 +1083,7 @@ def report_refine(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dic
 
 
 def report_decomp(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dict[str, Any]:
-    """[PARCHE19] Imprime el diagnóstico de descomposición, lo guarda en JSON y aplica la regla de decisión."""
+    """Imprime el diagnóstico de descomposición, lo guarda en JSON y aplica la regla de decisión."""
     s = decomp_summary(rows)
     print(f"\n   DESCOMPOSICIÓN DE LA PREGUNTA · techo de cobertura sin LLM de respuesta ({len(rows)} preguntas con "
           f"evidencia; mismo presupuesto: {getattr(C, 'LTM_DIRECT_TOP_K', 10)} hechos + "
@@ -1132,7 +1132,7 @@ def report_decomp(rows: list[dict[str, Any]], R: Any, S: str, base: Path) -> dic
 def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], None],
         north_star: dict[str, float]) -> None:
     R, S = ctx.report, "locomo"
-    os.environ.setdefault("HMEM_FIXED_NOW", "29/10/2026 12:00")   # [PARCHE22] prompt estable → cacheable
+    os.environ.setdefault("HMEM_FIXED_NOW", "29/10/2026 12:00")   # prompt estable → cacheable
     data, info = load_dataset(ctx.live)
     if data is None:
         R.suite_skipped[S] = info
@@ -1145,7 +1145,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     size = max(1, int(os.getenv("HMEM_LOCOMO_CHUNK", "6")))
     maxq = max(0, int(os.getenv("HMEM_LOCOMO_MAXQ", "0")))
     n_ref = max(0, int(os.getenv("HMEM_LOCOMO_REF", "30")))
-    workers = max(1, int(os.getenv("HMEM_ANSWER_WORKERS", "1")))   # [PARCHE24] 1 = agente reproducible
+    workers = max(1, int(os.getenv("HMEM_ANSWER_WORKERS", "1")))   # 1 = agente reproducible
     reingest = os.getenv("HMEM_LOCOMO_REINGEST", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     models = (str(getattr(C, "REMOTE_MODEL_ALIAS", "")), str(getattr(C, "EMB_MODEL_ALIAS", "")),
               "mock" if ctx.mock else "live")
@@ -1153,21 +1153,21 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     print(f"   datos: {info}")
     print(f"   conversaciones: {', '.join(s['sample_id'] for s in samples)} · bloque {size} turnos · "
           f"hechos inyectados (LTM_DIRECT_TOP_K) {getattr(C, 'LTM_DIRECT_TOP_K', 6)} · episodios en el prompt "
-          f"(EPI_PROMPT_K) {getattr(C, 'EPI_PROMPT_K', 5)} de {getattr(C, 'EPI_LOOKUP_K', 6)} buscados · caché: {base}")  # [PARCHE13] [PARCHE16]
+          f"(EPI_PROMPT_K) {getattr(C, 'EPI_PROMPT_K', 5)} de {getattr(C, 'EPI_LOOKUP_K', 6)} buscados · caché: {base}")
 
     items: list[dict[str, Any]] = []
     ingest_stats: list[dict[str, Any]] = []
-    deep = os.getenv("HMEM_LOCOMO_PROFUNDIDAD", "").strip().lower() in {"1", "true", "yes", "si", "sí"}  # [PARCHE15]
+    deep = os.getenv("HMEM_LOCOMO_PROFUNDIDAD", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     only_retrieval = os.getenv("HMEM_LOCOMO_SOLO_RECUPERACION", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     depth_rows: list[dict[str, Any]] = []
     all_facts: list[str] = []
-    # [PARCHE19] descomposición: en producción si LTM_DECOMPOSE=1; diagnóstico de techo con HMEM_LOCOMO_DESCOMP=1
+    # descomposición: en producción si LTM_DECOMPOSE=1; diagnóstico de techo con HMEM_LOCOMO_DESCOMP=1
     decomp_on = bool(getattr(C, "LTM_DECOMPOSE", False))
     decomp_diag = os.getenv("HMEM_LOCOMO_DESCOMP", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     decomp_frac = min(1.0, max(0.0, float(os.getenv("HMEM_DESCOMP_FRAC", "0.12"))))
     dcache = DecompCache(base, "|".join(models)) if (decomp_on or decomp_diag) else None
     diag_rows: list[dict[str, Any]] = []
-    # [PARCHE20] diversidad por día (EPI_DIVERSITY) y 2.ª pasada (LTM_SECOND_PASS); diagnóstico con HMEM_LOCOMO_REFINAR=1
+    # diversidad por día (EPI_DIVERSITY) y 2.ª pasada (LTM_SECOND_PASS); diagnóstico con HMEM_LOCOMO_REFINAR=1
     refine_on = refinar.second_pass_enabled()
     refine_diag = os.getenv("HMEM_LOCOMO_REFINAR", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     rcache = RefineCache(base, "|".join(models)) if (refine_on or refine_diag) else None
@@ -1225,14 +1225,14 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
 
         # ---- recuperación (secuencial: la latencia se mide sin contención)
         qa = subsample(list(sample["qa"]), maxq)
-        spk_of = {str(t["dia_id"]): str(t["speaker"]) for _n, _dt, ts in sessions(sample) for t in ts}  # [PARCHE12]
+        spk_of = {str(t["dia_id"]): str(t["speaker"]) for _n, _dt, ts in sessions(sample) for t in ts}
         print(f"   … {sid}: recuperando {len(qa)} preguntas", flush=True)
         for q in qa:
             cat = int(q.get("category", 0))
             ev = norm_evidence(q.get("evidence", []))
-            subs, t_d = dcache.get(tree.llm, str(q["question"])) if decomp_on else ([], 0.0)   # [PARCHE19]
+            subs, t_d = dcache.get(tree.llm, str(q["question"])) if decomp_on else ([], 0.0)
             ret = retrieve(tree, str(q["question"]), state, ev, subs, t_d)
-            if refine_on:   # [PARCHE20] producción: 2.ª pasada con lo recuperado en la 1.ª
+            if refine_on:   # producción: 2.ª pasada con lo recuperado en la 1.ª
                 more, t_r = rcache.get(tree.llm, str(q["question"]), refinar.contexto(ret["lines"], ret["epi_in"]))
                 ms_first = ret["ms"]
                 if more:
@@ -1241,7 +1241,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                 else:
                     ret["ms"] += t_r * 1000
                 ret["subs_ref"], ret["ms_refinar"] = more, t_r * 1000
-            if refine_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):   # [PARCHE20]
+            if refine_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):
                 qq = str(q["question"])
                 rb = ret if plain else retrieve(tree, qq, state, ev, diversify=False)
                 ra = retrieve(tree, qq, state, ev, diversify=True)
@@ -1256,7 +1256,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                  "ses_b": rb["sessions"], "ses_a": ra["sessions"],
                                  "cov_b": rb["coverage"], "cov_a": ra["coverage"], "cov_r": rr["coverage"],
                                  "cov_ar": rar["coverage"], "cov_o": ro["coverage"]})
-            if decomp_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):   # [PARCHE19]
+            if decomp_diag and ev and diag_pick(sid, str(q["question"]), cat, decomp_frac):
                 d_subs, d_t = (subs, t_d) if decomp_on else dcache.get(tree.llm, str(q["question"]))
                 rb = retrieve(tree, str(q["question"]), state, ev) if decomp_on else ret
                 rd = retrieve(tree, str(q["question"]), state, ev, d_subs, d_t) if d_subs else rb
@@ -1269,8 +1269,8 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             spk_a, spk_b = sample["conversation"]["speaker_a"], sample["conversation"]["speaker_b"]
             subj = subject_of(str(q["question"]), spk_a, spk_b)
             other = (spk_b if subj == spk_a else spk_a) if subj else None
-            ev_spk = sorted({spk_of[d] for d in ev if d in spk_of})   # [PARCHE12] quién pronunció la evidencia
-            if deep:   # [PARCHE15]
+            ev_spk = sorted({spk_of[d] for d in ev if d in spk_of})   # quién pronunció la evidencia
+            if deep:
                 depth_rows.append({"cat": cat, "ranks": deep_ranks(tree, str(q["question"]), ev, state)})
             items.append({"subj": subj, "other": other, "ev_spk": ev_spk,
                           "ph": phrasing(ret["lines"], subj, other),
@@ -1335,7 +1335,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         if sel:
             print(f"   {CATS[c]:<14}{len(sel):>5}{pct(sum(it['ret']['in_ctx'] for it in sel) / len(sel)):>14}"
                   f"{pct(sum(it['ret']['in_cand'] for it in sel) / len(sel)):>13}")
-    sys_chars = sorted(len(it["system"]) for it in items)   # [PARCHE16] coste del contexto
+    sys_chars = sorted(len(it["system"]) for it in items)   # coste del contexto
     if sys_chars:
         print(f"   prompt de sistema: mediana {percentile(sys_chars, 50) / 1000:.1f} k caracteres · P95 "
               f"{percentile(sys_chars, 95) / 1000:.1f} k (≈ /4 tokens)")
@@ -1347,7 +1347,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     R.add(S, "LoCoMo · P95 recuperación (recall + episódica)", percentile(lat, 95) <= north_star["p95_ms"],
           f"{percentile(lat, 95):.0f} ms", f"≤ {north_star['p95_ms']:.0f} ms", "medio" if ctx.live else "info",
           "vectores.py / ltm/retrieval.py / episodica.py")
-    # ---- [PARCHE11] top-K, cobertura, similitud de la compuerta e identidad de los hechos (sin LLM)
+    # ---- top-K, cobertura, similitud de la compuerta e identidad de los hechos (sin LLM)
     avg = lambda xs: sum(xs) / len(xs) if xs else 0.0
     rk = [it["ret"]["ev_rank"] for it in ev_pos]
     k_in, k_mid, k_out = (sum(1 for x in rk if x and x <= 6), sum(1 for x in rk if x and x > 6),
@@ -1381,7 +1381,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
           f"{len(items) - len(lost_ctx)}/{len(items)}", "todas", "alto", "agente.py · _build_system",
           evidence=[f"«{it['q'][:60]}»" for it in lost_ctx[:4]])
 
-    if deep and depth_rows:   # [PARCHE15] ¿a qué profundidad está la evidencia y qué cobertura daría más contexto?
+    if deep and depth_rows:   # ¿a qué profundidad está la evidencia y qué cobertura daría más contexto?
         rows_ev = [d for d in depth_rows if d["cat"] in POS_CATS and d["ranks"]]
         print(f"\n   PROFUNDIDAD DE LA EVIDENCIA (búsqueda por embeddings sin umbral, {len(rows_ev)} preguntas con evidencia)")
         print("   puesto de cada turno de evidencia · hechos (bloque de 6 turnos) / episodios (turno exacto) · "
@@ -1412,8 +1412,8 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                       " · ".join(f"K{k}+E{e} {pct(v)}" for (k, e), v in zip(DEPTH_GRID, vals)), "(diagnóstico)",
                       "info", "ltm/retrieval.py (K) · config.EPI_LOOKUP_K (E)")
         print(f"   (actual: K{getattr(C, 'LTM_DIRECT_TOP_K', 10)}+E{getattr(C, 'EPI_PROMPT_K', 20)} · 'completa' = todas "
-              "las evidencias de la pregunta alcanzadas)")  # [PARCHE17]
-    if dcache is not None:   # [PARCHE19]
+              "las evidencias de la pregunta alcanzadas)")
+    if dcache is not None:
         dcache.save()
         print(f"\n   subconsultas: {dcache.new} generadas ahora · {dcache.hits} reutilizadas de la caché")
     if decomp_on:
@@ -1425,7 +1425,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
               f"{n_dec}/{len(items)} · {percentile(dt, 95):.0f} ms", "(observación)", "info", "descomponer.py")
     if decomp_diag and diag_rows:
         report_decomp(diag_rows, R, S, base)
-    ses = [it["ret"]["sessions"] for it in items if it["cat"] in POS_CATS]   # [PARCHE20]
+    ses = [it["ret"]["sessions"] for it in items if it["cat"] in POS_CATS]
     if ses:
         print(f"   sesiones distintas entre los episodios del prompt: media {sum(ses) / len(ses):.1f} · "
               f"P10 {percentile(sorted(ses), 10):.0f} · P50 {percentile(sorted(ses), 50):.0f}")
@@ -1456,7 +1456,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     # ---- respuestas reales del agente + juez
     from llm import LLM
     from agente import BASE_PROMPT, now_str
-    # [PARCHE22] el agente responde en el servidor STM; el juez, en otro (por defecto el LTM, ocioso en esta fase):
+    # el agente responde en el servidor STM; el juez, en otro (por defecto el LTM, ocioso en esta fase):
     # responder y juzgar se solapan. Respuestas y juicios deterministas (T=0) y en caché persistente.
     judge_url = os.getenv("HMEM_JUDGE_URL", "").strip() or C.LLM_LTM_URL
     chat = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
@@ -1467,13 +1467,13 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     j_workers = max(1, int(os.getenv("HMEM_JUDGE_WORKERS", "2")))
     nocache = os.getenv("HMEM_LOCOMO_NOCACHE", "").strip().lower() in {"1", "true", "yes", "si", "sí"}
     truthy = {"1", "true", "yes", "si", "sí"}
-    think_mode = think_mode_env()   # [PARCHE24] off | on | auto
+    think_mode = think_mode_env()   # off | on | auto
     think = think_mode != "off"
     think_mt = max(512, int(os.getenv("HMEM_THINK_MAX_TOKENS", "4096")))
     mt = think_mt if think else 350
-    a_cp = os.getenv("HMEM_ANSWER_CACHE_PROMPT", "0").strip().lower() in truthy   # [PARCHE24]
+    a_cp = os.getenv("HMEM_ANSWER_CACHE_PROMPT", "0").strip().lower() in truthy
     gen = gen_tag(workers, a_cp)
-    if os.getenv("HMEM_LOCOMO_DETERMINISMO", "").strip().lower() in truthy:   # [PARCHE23]
+    if os.getenv("HMEM_LOCOMO_DETERMINISMO", "").strip().lower() in truthy:
         run_determinism(chat, items, temp, R, S, base, fp_a)
         return
     if think:
@@ -1499,18 +1499,18 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     ref_items = rnd.sample(pos, min(n_ref, len(pos))) if n_ref else []
     jobs = [(it, it["system"]) for it in items] + [({**it, "ref": True}, BASE_PROMPT.format(now=now_str()))
                                                    for it in ref_items]
-    for it, _s in jobs:   # [PARCHE24] ¿piensa esta pregunta? (la referencia sin memoria, nunca)
+    for it, _s in jobs:   # ¿piensa esta pregunta? (la referencia sin memoria, nunca)
         it["think"], it["think_why"] = (False, "referencia") if it.get("ref") else pensar.decide(it["q"], think_mode)
 
     def answer(job: tuple[dict, str]) -> str:
         it, system = job
         th = bool(it.get("think"))
-        key = answer_key(fp_a["id"], temp, think_mt, system, it["q"], th, gen)   # [PARCHE24]
+        key = answer_key(fp_a["id"], temp, think_mt, system, it["q"], th, gen)
         hit = None if nocache else bc.get_answer(key)
         if hit is not None:
             it["t_answer"], it["cached"] = hit[1], True
             return hit[0]
-        t_a = time.perf_counter()   # [PARCHE17] tiempo de respuesta del agente (LLM incluido)
+        t_a = time.perf_counter()   # tiempo de respuesta del agente (LLM incluido)
         try:
             a = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": it["q"]}],
                           max_tokens=think_mt if th else 350, temperature=temp, cache_prompt=a_cp,
@@ -1519,7 +1519,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
             return f"[error LLM: {type(exc).__name__}]"
         it["t_answer"], it["cached"] = time.perf_counter() - t_a, False
-        if th:   # [PARCHE23] coste del pensamiento
+        if th:   # coste del pensamiento
             it["tokens"] = chat.last_usage.get("completion_tokens")
             it["cut"] = chat.last_finish_reason == "length"
         if not nocache:
@@ -1570,7 +1570,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             fj.append(fut)
             if k % step == 0:
                 progress(k, sum(x.done() for x in fj))
-        pending = [x for x in fj if not x.done()]   # [PARCHE23] solo los juicios que aún faltan (antes contaba todos)
+        pending = [x for x in fj if not x.done()]   # solo los juicios que aún faltan (antes contaba todos)
         done0 = n_jobs - len(pending)
         for k, f in enumerate(concurrent.futures.as_completed(pending), 1):
             if k % step == 0:
@@ -1595,14 +1595,14 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     n_inv = sum(map(inv, neg))
     c_lo, c_hi = wilson(c_ok, len(pos))
     i_lo, i_hi = wilson(n_inv, len(neg))
-    t_ans = sorted(it["t_answer"] for it in main_items if it.get("t_answer") is not None)   # [PARCHE17]
+    t_ans = sorted(it["t_answer"] for it in main_items if it.get("t_answer") is not None)
     if t_ans:
         print(f"\n   tiempo de respuesta del agente (LLM incluido, {workers} en paralelo): mediana "
               f"{percentile(t_ans, 50):.1f} s · P95 {percentile(t_ans, 95):.1f} s")
         R.add(S, "Tiempo de respuesta del agente (mediana / P95)", True,
               f"{percentile(t_ans, 50):.2f} s / {percentile(t_ans, 95):.2f} s", "(observación)", "info",
               "agente.py · _build_system (tamaño del prompt)", f"{workers} en paralelo")
-    if think_mode == "auto":   # [PARCHE24] qué decide el modo automático y cuánto cuesta
+    if think_mode == "auto":   # qué decide el modo automático y cuánto cuesta
         routed = [it for it in main_items if it.get("think")]
         why: dict[str, int] = {}
         for it in routed:
@@ -1617,7 +1617,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
         R.add(S, "Pensamiento auto: preguntas que piensan", True, txt, "(observación)", "info", "pensar.py · RULES", by_cat)
         R.add(S, "Pensamiento auto: tiempo piensan / no piensan (mediana)", True,
               f"{percentile(t_r, 50):.2f} s / {percentile(t_n, 50):.2f} s", "(observación)", "info", "pensar.py")
-    if think:   # [PARCHE23]
+    if think:
         toks = [it["tokens"] for it in main_items if it.get("tokens")]
         n_cut = sum(1 for it in main_items if it.get("cut"))
         if toks:
@@ -1627,7 +1627,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                   f"{percentile(toks, 50):.0f} / {percentile(toks, 95):.0f}", "(observación)", "info", "")
         R.add(S, "Pensamiento: respuestas cortadas por el límite", True, f"{n_cut}/{len(main_items)}",
               "(observación)", "info", "HMEM_THINK_MAX_TOKENS")
-    a_len = sorted(len(str(it.get("a", ""))) for it in main_items)   # [PARCHE22]
+    a_len = sorted(len(str(it.get("a", ""))) for it in main_items)
     if a_len:
         print(f"   longitud de la respuesta: mediana {percentile(a_len, 50):.0f} caracteres · P95 {percentile(a_len, 95):.0f}")
         R.add(S, "Longitud de la respuesta (mediana / P95, caracteres)", True,
@@ -1675,7 +1675,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
     for it in bad_n[:10]:
         print(f"     ✗[{it['ret']['state'][:4]}] «{it['q'][:60]}» trampa «{it['trap'][:30]}» → «{flat(it['a'])[:90]}»")
 
-    # ---- [PARCHE12] auditoría automática: de dónde sale lo inventado y posibles errores de etiqueta de LoCoMo
+    # ---- auditoría automática: de dónde sale lo inventado y posibles errores de etiqueta de LoCoMo
     src_cnt: dict[str, int] = {}
     for it in bad_n:
         k = trap_source(it["trap"], it["ret"]["lines"], [str(e.get("text", "")) for e in it["ret"]["epi_in"]])
@@ -1709,7 +1709,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                        f"p={c['p']:.3f})")
                 print(f"   {label:<10} {txt}")
                 R.add(S, f"Comparado con la base · {label}", True, txt, "(decisión)", "info", "agente.py · BASE_PROMPT")
-            for c in POS_CATS:   # [PARCHE22] comparación pareada por categoría
+            for c in POS_CATS:   # comparación pareada por categoría
                 cc = compare_runs([r for r in base_rows if int(r["cat"]) == c],
                                   [r for r in new_rows if int(r["cat"]) == c])["pos"]
                 if cc["n"]:
@@ -1717,7 +1717,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                            f"{cc['mejora']} · empeoran {cc['empeora']} · p={cc['p']:.3f})")
                     print(f"     · {CATS[c]:<11} {txt}")
                     R.add(S, f"Comparado con la base · {CATS[c]}", True, txt, "(decisión)", "info", "")
-            if think_mode == "auto":   # [PARCHE24] el efecto, solo donde el modo automático decidió pensar
+            if think_mode == "auto":   # el efecto, solo donde el modo automático decidió pensar
                 routed_rows = [r for r, it in zip(new_rows, main_items) if it.get("think")]
                 for key, label in (("pos", "correctas"), ("neg", "inventa")):
                     cc = compare_runs(base_rows, routed_rows)[key]
@@ -1729,10 +1729,10 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                         print(f"     · solo las que piensan · {label:<9} {txt}")
                         R.add(S, f"Comparado con la base · solo las que piensan · {label}", True, txt, "(decisión)",
                               "info", "pensar.py")
-            try:   # [PARCHE22] ¿la base se midió con el mismo servidor, juez y forma de medir?
+            try:   # ¿la base se midió con el mismo servidor, juez y forma de medir?
                 bm = json.loads(Path(base_path).with_suffix(".meta.json").read_text(encoding="utf-8"))
                 same = (bm.get("agente", {}).get("id"), bm.get("juez", {}).get("id"), bm.get("temp"), bm.get("votos"),
-                        bm.get("gen", "w2cp1")) == (fp_a["id"], fp_j["id"], temp, votes, gen)   # [PARCHE24] + generación
+                        bm.get("gen", "w2cp1")) == (fp_a["id"], fp_j["id"], temp, votes, gen)   # + generación
                 msg = "misma huella de servidor, juez y medición" if same else (
                     "⚠ la base se midió con OTRO servidor, juez o forma de medir: la comparación mezcla cambios")
             except Exception:
@@ -1742,7 +1742,7 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
             print("   (p = test de signos exacto sobre las preguntas que cambian; con el juez estocástico, "
                   "algo de cambio es ruido: decide con p < 0,05)")
 
-    # ---- [PARCHE11] ¿se inventa más cuando el contexto no dice de quién es cada hecho?
+    # ---- ¿se inventa más cuando el contexto no dice de quién es cada hecho?
     def split_rate(xs: list[dict], key: Callable[[dict], bool], good: Callable[[dict], bool]) -> str:
         yes, no = [it for it in xs if key(it)], [it for it in xs if not key(it)]
         r = lambda g: f"{pct(sum(map(good, g)) / len(g))} (n={len(g)})" if g else "— (n=0)"
@@ -1766,11 +1766,11 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
           "ltm/retrieval.py · modo directo (top-6)")
 
     # detalle completo para auditar (fuera de git)
-    # [PARCHE17] solo una ejecución COMPLETA (10 conversaciones, todas las preguntas) es base de comparaciones
+    # solo una ejecución COMPLETA (10 conversaciones, todas las preguntas) es base de comparaciones
     full = len(samples) == len(data) and not maxq
     stem = f"{'resultados' if full else 'parcial'}_{time.strftime('%Y%m%d_%H%M%S')}"
     out = base / f"{stem}.jsonl"
-    for k in range(2, 100):   # [PARCHE22] dos ejecuciones en el mismo segundo no se pisan (la base no se pierde)
+    for k in range(2, 100):   # dos ejecuciones en el mismo segundo no se pisan (la base no se pierde)
         if not out.exists():
             break
         out = base / f"{stem}_{k}.jsonl"
@@ -1782,25 +1782,25 @@ def run(ctx: Any, open_tree: Callable[[Path], Any], sync_all: Callable[[Any], No
                                      "veredicto": it.get("v"), "estado": it["ret"]["state"],
                                      "evid_prompt": it["ret"]["in_ctx"], "evid_cand": it["ret"]["in_cand"],
                                      "causa": it.get("bucket"), "ms": round(it["ret"]["ms"], 1),
-                                     "t_respuesta": round(it.get("t_answer") or 0.0, 2),  # [PARCHE17]
-                                     "tokens": it.get("tokens"), "cortada": bool(it.get("cut")),  # [PARCHE23]
-                                     "piensa": bool(it.get("think")), "motivo_piensa": it.get("think_why"),  # [PARCHE24]
-                                     "subconsultas": it["ret"].get("subs") or [],  # [PARCHE19]
-                                     "consultas_2a": it["ret"].get("subs_ref") or [],  # [PARCHE20]
+                                     "t_respuesta": round(it.get("t_answer") or 0.0, 2),
+                                     "tokens": it.get("tokens"), "cortada": bool(it.get("cut")),
+                                     "piensa": bool(it.get("think")), "motivo_piensa": it.get("think_why"),
+                                     "subconsultas": it["ret"].get("subs") or [],
+                                     "consultas_2a": it["ret"].get("subs_ref") or [],
                                      "sesiones_prompt": it["ret"].get("sessions"),
-                                     # [PARCHE11] contexto completo para auditar a mano
-                                     "sujeto": it["subj"], "hablante_evid": it["ev_spk"],  # [PARCHE12]
+                                     # contexto completo para auditar a mano
+                                     "sujeto": it["subj"], "hablante_evid": it["ev_spk"],
                                      "identidad": it["ph"], "top_sim": it["ret"]["top_sim"],
                                      "rango_evid": it["ret"]["ev_rank"], "cobertura": round(it["ret"]["coverage"], 3),
                                      "evidencia": sorted(it["ev"]), "hechos": it["ret"]["lines"],
                                      "episodios": [str(e.get("text", ""))[:300] for e in it["ret"]["epi_in"]]},
                                     ensure_ascii=False) + "\n")
         print(f"\n   detalle de cada pregunta: {out}")
-        out.with_suffix(".meta.json").write_text(json.dumps({   # [PARCHE22] huella de la medición
+        out.with_suffix(".meta.json").write_text(json.dumps({   # huella de la medición
             "fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "agente": fp_a, "juez": fp_j, "temp": temp, "votos": votes,
             "nocache": nocache, "fixed_now": now_str(), "answer_direct": bool(getattr(C, "ANSWER_DIRECT", False)),
-            "think": think, "max_tokens": mt, "cache_prompt": bool(getattr(C, "LLM_CACHE_PROMPT", True)),  # [PARCHE23]
-            "think_mode": think_mode, "gen": gen, "workers": workers, "answer_cache_prompt": a_cp,  # [PARCHE24]
+            "think": think, "max_tokens": mt, "cache_prompt": bool(getattr(C, "LLM_CACHE_PROMPT", True)),
+            "think_mode": think_mode, "gen": gen, "workers": workers, "answer_cache_prompt": a_cp,
             "config": {k: str(getattr(C, k, "")) for k in ("LTM_DIRECT_TOP_K", "EPI_PROMPT_K", "EPI_LOOKUP_K",
                                                           "RETRIEVAL_PROFILE", "RERANK_MODE", "LTM_DECOMPOSE",
                                                           "EPI_DIVERSITY", "LTM_SECOND_PASS")}},

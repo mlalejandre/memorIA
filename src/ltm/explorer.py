@@ -14,11 +14,11 @@ try:
 except ImportError:
     _vectores = None
 try:
-    import descomponer as _decomp  # [PARCHE19]
+    import descomponer as _decomp
 except ImportError:
     _decomp = None
 try:
-    import refinar as _refinar  # [PARCHE20]
+    import refinar as _refinar
     import config as _cfg
 except ImportError:
     _refinar = None
@@ -306,12 +306,12 @@ class ExplorerMixin:
                         diversify: bool | None = None) -> list[dict[str, Any]]:
         if getattr(self, "episodes", None) is None:
             return []
-        if diversify is None:  # [PARCHE20] diversidad por día: candidatos más hondos y tope por día
+        if diversify is None:  # diversidad por día: candidatos más hondos y tope por día
             diversify = _refinar is not None and _refinar.diversity_mode() == "dia"
         if diversify and _refinar is not None:
             pool = max(1, int(getattr(_cfg, "EPI_DIVERSITY_POOL", 3))) * limit
             return _refinar.por_dia(self.search_episodes(question, pool, extra_queries, diversify=False), limit)
-        if extra_queries and _decomp is not None:  # [PARCHE19] una búsqueda por subconsulta y fusión RRF
+        if extra_queries and _decomp is not None:  # una búsqueda por subconsulta y fusión RRF
             lists = [self.search_episodes(q, limit, diversify=False) for q in [question, *extra_queries]]
             return _decomp.fuse_many(lists, limit)
         lex = self.episodes.search(question, limit)

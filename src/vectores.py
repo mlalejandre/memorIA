@@ -121,7 +121,7 @@ class VectorStore:
     def __init__(self, tree: Any) -> None:
         self.tree = tree
         self._cache: dict[str, tuple[Any, list[str], Any, int]] = {}
-        self.incremental_appends = 0   # [PARCHE8] veces que la caché creció sin releer todos los vectores
+        self.incremental_appends = 0   # veces que la caché creció sin releer todos los vectores
         self.full_rebuilds = 0
         self._init_db()
 
@@ -132,7 +132,7 @@ class VectorStore:
                       "kind TEXT NOT NULL, ref TEXT NOT NULL, model TEXT NOT NULL, "
                       "dim INTEGER NOT NULL, vec BLOB NOT NULL, PRIMARY KEY (kind, ref))")
             c.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_kind ON embeddings(kind)")
-            # [PARCHE8] índice cubriente: el COUNT por (kind, model) ya no lee todos los vectores del disco
+            # índice cubriente: el COUNT por (kind, model) ya no lee todos los vectores del disco
             c.execute("CREATE INDEX IF NOT EXISTS idx_embeddings_kind_model ON embeddings(kind, model)")
             for sql in _TRIGGERS:  # un texto editado invalida su vector automáticamente
                 c.execute(sql)
@@ -178,7 +178,7 @@ class VectorStore:
         cached = self._cache.get(kind)
         if cached and cached[0] == key:
             return cached[1], cached[2], cached[3]
-        # [PARCHE8] caché INCREMENTAL: si desde la última vez solo se han AÑADIDO vectores (nada borrado ni
+        # caché INCREMENTAL: si desde la última vez solo se han AÑADIDO vectores (nada borrado ni
         # reemplazado), se leen solo los nuevos y se agregan al final, en vez de releer toda la tabla.
         if cached and cached[0][1:] == key[1:] and cached[2] is not None:
             (old_cnt, old_max) = cached[0][0]
@@ -302,7 +302,7 @@ class VectorStore:
 
     def search(self, kind: str, qvec: array, k: int | None, min_sim: float, model: str) -> list[tuple[str, float]]:
         # Por encima del umbral no construimos una matriz con todos los BLOBs en RAM.
-        threshold = max(1, int(os.getenv("HMEM_VECTOR_CACHE_MAX", "200000")))   # [PARCHE8] antes 20.000
+        threshold = max(1, int(os.getenv("HMEM_VECTOR_CACHE_MAX", "200000")))   # antes 20.000
         with self.tree.lock:
             count = int(self.tree.conn.execute(
                 "SELECT COUNT(*) FROM embeddings WHERE kind = ? AND model = ?", (kind, model)

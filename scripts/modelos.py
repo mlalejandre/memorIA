@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""[PARCHE31] Modelos y GPUs de los servidores desde el terminal del Mac (lo mismo que el panel de la consola).
+"""Modelos y GPUs de los servidores desde el terminal del Mac (lo mismo que el panel de la consola).
 
     python3 scripts/modelos.py                      # qué hay: GPU, servidores, .gguf disponibles (no toca nada)
     python3 scripts/modelos.py stm GSQ-RCO-IQ3_S    # el agente responde con Qwen3.8 IQ3_S (trozo único del nombre o ruta)
@@ -59,9 +59,9 @@ def main() -> int:
     ap.add_argument("--forzar", action="store_true", help="aunque parezca no caber en la VRAM")
     ap.add_argument("--no-guardar", action="store_true", help="no guardar la elección (BODY/servidores.json)")
     ap.add_argument("--json", action="store_true")
-    ap.add_argument("--latencia-emb", action="store_true", help="[PARCHE32] mide la latencia de los embeddings")
+    ap.add_argument("--latencia-emb", action="store_true", help="mide la latencia de los embeddings")
     ap.add_argument("--n", type=int, default=40)
-    ap.add_argument("--compilar-gpu", help="[PARCHE32] compila llama-server para la arquitectura de esa GPU")
+    ap.add_argument("--compilar-gpu", help="compila llama-server para la arquitectura de esa GPU")
     a = ap.parse_args()
     inv = modelos.inventory()
     if a.latencia_emb:

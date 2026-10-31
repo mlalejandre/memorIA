@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Tests del adaptador LoCoMo (sin red, sin servidores, sin datos ajenos).  [PARCHE10]
+# Tests del adaptador LoCoMo (sin red, sin servidores, sin datos ajenos).
 from __future__ import annotations
 
 import copy
@@ -75,7 +75,7 @@ class TestLocomoFormat(unittest.TestCase):
         self.assertEqual(locomo.evidence_bucket(False, False, False), "ingesta")
 
 
-class TestLocomoDiagnostics(unittest.TestCase):  # [PARCHE11]
+class TestLocomoDiagnostics(unittest.TestCase):
     def test_subject_of(self):
         self.assertEqual(locomo.subject_of("What did Caroline realize?", "Caroline", "Melanie"), "Caroline")
         self.assertEqual(locomo.subject_of("How long have Mel and her husband been married?", "Caroline", "Melanie"),
@@ -103,7 +103,7 @@ class TestLocomoDiagnostics(unittest.TestCase):  # [PARCHE11]
         self.assertEqual(locomo.coverage(set(), ["a"], [], cell_dia, epi_dia), 0.0)
 
 
-class TestLocomoComparison(unittest.TestCase):  # [PARCHE12]
+class TestLocomoComparison(unittest.TestCase):
     def test_sign_p(self):
         self.assertEqual(locomo.sign_p(0, 0), 1.0)
         self.assertAlmostEqual(locomo.sign_p(0, 10), 2 / 1024)
@@ -135,7 +135,7 @@ class TestLocomoComparison(unittest.TestCase):  # [PARCHE12]
         self.assertEqual(locomo.trap_source("Ferrari", ["nada"], ["nada"]), "ninguno claro")
 
 
-class TestLocomoDepth(unittest.TestCase):  # [PARCHE15]
+class TestLocomoDepth(unittest.TestCase):
     def test_covered_and_buckets(self):
         ranks = {"D1:1": (3, None), "D2:1": (15, 8), "D3:1": (None, 40)}
         self.assertAlmostEqual(locomo.covered(ranks, 10, 6), 1 / 3)
@@ -146,7 +146,7 @@ class TestLocomoDepth(unittest.TestCase):  # [PARCHE15]
                          ["1-6", "7-10", "11-20", "21-50", "51-200", "—"])
 
 
-class TestLocomoDecomposition(unittest.TestCase):  # [PARCHE19]
+class TestLocomoDecomposition(unittest.TestCase):
     def test_oracle_subs(self):
         self.assertEqual(locomo.oracle_subs("Pimienta"), ["Pimienta"])
         self.assertEqual(locomo.oracle_subs("pottery, camping and painting"),
@@ -197,7 +197,7 @@ class TestLocomoDecomposition(unittest.TestCase):  # [PARCHE19]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestLocomoRefine(unittest.TestCase):  # [PARCHE20]
+class TestLocomoRefine(unittest.TestCase):
     def _rows(self, n, b, a, r, ar, drop_a=0.0):
         rows = [{"cat": 1, "n_subs": 1, "t": 0.4, "n_ev_ses": 2, "ses_b": 3, "ses_a": 7,
                  "cov_b": 1.0 if i < b else 0.5, "cov_a": 1.0 if i < a else 0.5, "cov_r": 1.0 if i < r else 0.5,
@@ -234,7 +234,7 @@ class TestLocomoRefine(unittest.TestCase):  # [PARCHE20]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestBenchCache(unittest.TestCase):  # [PARCHE22]
+class TestBenchCache(unittest.TestCase):
     def test_roundtrip_and_counters(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_bc_"))
         try:
@@ -340,7 +340,7 @@ class TestLocomoIngestion(unittest.TestCase):
         self.assertTrue(ret["in_cand"])
         system = locomo.system_prompt(ret)
         self.assertIn("Fecha actual", system)
-        ranks = locomo.deep_ranks(tree, "What is the name of Lucas's ferret Pimienta?", {"D1:1"}, st)  # [PARCHE15]
+        ranks = locomo.deep_ranks(tree, "What is the name of Lucas's ferret Pimienta?", {"D1:1"}, st)
         self.assertIn("D1:1", ranks)
         self.assertIsNotNone(ranks["D1:1"][1])
 
@@ -348,7 +348,7 @@ class TestLocomoIngestion(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 
-class _R:   # [PARCHE23] informe mínimo para las pruebas
+class _R:   # informe mínimo para las pruebas
     def __init__(self) -> None:
         self.rows = []
 
@@ -356,7 +356,7 @@ class _R:   # [PARCHE23] informe mínimo para las pruebas
         self.rows.append((name, value))
 
 
-class TestThinkingAndDeterminism(unittest.TestCase):  # [PARCHE23]
+class TestThinkingAndDeterminism(unittest.TestCase):
     def test_determinism_choice_rule(self):
         mk = lambda w, cp, same, rate: {"nombre": locomo.det_name(w, cp), "workers": w, "cache_prompt": cp,
                                         "iguales": same, "ritmo": rate}
@@ -416,7 +416,7 @@ class TestThinkingAndDeterminism(unittest.TestCase):  # [PARCHE23]
         self.assertEqual(llm.last_usage, {})
 
 
-class TestDeterministicGeneration(unittest.TestCase):  # [PARCHE24]
+class TestDeterministicGeneration(unittest.TestCase):
     def test_answer_key_compat_and_generation(self):
         k = lambda *a: locomo.answer_key("fp", 0.0, 4096, "sis", "q", *a)
         self.assertEqual(k(False, "w2cp1"), locomo.BenchCache.key("a1", "fp", 0.0, 350, "sis", "q"))          # P22

@@ -2,7 +2,7 @@
 
 > Hierarchical long-term memory for local LLMs: an adaptive-depth semantic tree (up to 7 levels) of nodes plus atomic "cells", an autonomous background maintenance loop, hybrid retrieval and per-fact provenance. **Python standard library only (`numpy` is optional).**
 >
-> ⚠️ **Status: alpha (v0.3.0a4).** It works and is tested, but it is a research project: see *Known limitations* below.
+> ⚠️ **Status: alpha (v0.3.0a5).** It works and is tested, but it is a research project: see *Known limitations* below.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -34,7 +34,6 @@ The agent keeps **two memories queried in parallel** on every message:
 - **Embeddings (optional, GPU 2).** A second `llama-server --embeddings` (bge-m3 by default, port `SERVER_PORT_GPU2`=8089) feeds a fifth RRF ranking for cells and episodes, nearest-neighbour placement in `store()` (0–4 LLM calls instead of 7), cheaper tree navigation and cosine-based dedupe. Vectors live in `memoria.db`; if the server is down everything works as before. `pip install numpy` (optional) speeds up the cosine search. Measure it with `python3 scripts/evaluar.py`.
 
 ## 🎯 Objective and measured results (v0.3.0a4)
-<!-- [PARCHE14] --> <!-- [PARCHE25] -->
 
 The project is measured end to end against one objective: **the agent answers correctly what is in its memory, does not invent what is not, and keeps doing so as memory grows.** It is measured on two exams: our own synthetic corpus, and the public LoCoMo benchmark, which we did not write.
 
@@ -71,7 +70,7 @@ Measured with `nail-35b` (answers and judge) and `bge-m3` embeddings, default co
 
 ¹ Same system and defaults as v0.3.0a3; what changed is the measurement. Answers are now generated at temperature 0, one request at a time and without the server prompt cache, and judged by one deterministic vote, so a re-run reproduces every answer and verdict (cached in `experiment/locomo_cache/banco.sqlite`). Paired with the old stochastic measurement the difference is noise (35 questions better, 34 worse, p = 1.0). Frozen baseline: [`experiment/baseline_locomo_v0.3.0a4.json`](experiment/baseline_locomo_v0.3.0a4.json).
 ² Measured over a slower network link to the embedding server (≈ +200 ms per query; see the own-corpus note).
-³ 114 ms on 2026-10-30 at night, 475 ms in every run that afternoon with the same code; almost all of it is the query embedding. Under investigation.
+³ 114 ms on 2026-10-30 at night, 475 ms in every run that afternoon with the same code; almost all of it is the query embedding, which takes ≈ 330 ms on any GPU, idle or loaded (measured in 0.3.0a5), so the cause is not the GPU. Under investigation.
 <!-- latencia-respuesta -->
 Answer time per question (LLM included, one request at a time as in real use, 1,986 LoCoMo questions, 2026-10-30): median 2.1 s / P95 3.5 s. With two requests in parallel it rises to 3.0 s / 6.0 s. With the optional thinking mode (`AGENT_THINK`), questions that think take 11.3 s median. Not part of the objective; lower `EPI_PROMPT_K` to trade accuracy for speed.
 <!-- /latencia-respuesta -->
@@ -86,7 +85,6 @@ python3 benchmarks/prueba.py --live --only locomo                            # f
 
 What the measurements decided (details in [CHANGELOG](CHANGELOG.md)): embeddings-only retrieval beats the full hybrid fusion and is 2.7× faster; an LLM reranker improves ranking but not the objective, so it is off by default; uncertain memories are injected with an explicit caution; an attribution rule in the prompt halved invention on LoCoMo (12.8 % → 6.3 %, p < 0.001); injecting 10 facts instead of 6 raised LoCoMo accuracy (59.7 % → 61.9 %, p = 0.003) without raising invention; showing 20 verbatim episodes instead of 5 raised it again (61.9 % → 70.2 %, p < 0.001; multi-hop 35.5 % → 47.5 %), also without raising invention. Measured and rejected since then (flags kept, off by default): question decomposition, per-day episode diversity, a second retrieval pass, temporal anchoring at ingestion and forcing direct answers. Thinking before answering gave +3.5 pp on a 397-question sample (p = 0.08) at five times the answer time, and the automatic mode (+0.3 pp overall, temporal +4.1 pp) did not meet the rule either, so thinking is an option the user chooses, off by default. Every experiment and its pre-registered rule is in [`experiment/LEDGER.md`](experiment/LEDGER.md).
 
-<!-- [PARCHE9] -->
 ## 🚀 Quick start
 
 Requirements: Python 3.10+ (SQLite with FTS5, bundled with all mainstream builds) and any OpenAI-compatible endpoint (llama-server, vLLM, Ollama...).

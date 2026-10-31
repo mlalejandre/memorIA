@@ -514,7 +514,7 @@ def cell_texts(tree: Any, ids: list[str]) -> dict[str, str]:
 # ---------------------------------------------------------------- ablación
 _ONLY_EMB = {"RRF_W_EXACT": 0, "RRF_W_FTS": 0, "RRF_W_SEM": 0, "RRF_W_TREE": 0, "RRF_W_SYN": 0,
              "SYN_ENABLED": False, "MEM_RECALL_EXPAND": False}
-# [PARCHE2] Pesos por defecto de config.py con valores EXPLÍCITOS: la ablación no depende de
+# Pesos por defecto de config.py con valores EXPLÍCITOS: la ablación no depende de
 # RETRIEVAL_PROFILE ni de .env (antes C.RRF_W_* valían 0 con el perfil 'embeddings' y todas las filas eran iguales).
 _DEF = {"RRF_W_EXACT": 0.6, "RRF_W_FTS": 0.25, "RRF_W_SEM": 0.3, "RRF_W_TREE": 0.1, "RRF_W_SYN": 0.3, "RRF_W_EMB": 2.5}
 _FULL = {**_DEF, "SYN_ENABLED": True, "MEM_RECALL_EXPAND": True}
@@ -574,7 +574,7 @@ def suite_ablacion(ctx: Ctx) -> None:
     dev_idx = [i for i in range(len(qs)) if i not in test_set]
 
     res: dict[str, list[dict[str, Any]]] = {}
-    for name, over, nav, _base in ABLATIONS:   # [PARCHE2]
+    for name, over, nav, _base in ABLATIONS:
         with _cfg_override(**over):
             res[name] = _evaluate(tree, qs, id_of, navigate=nav)
 
@@ -616,7 +616,7 @@ def suite_ablacion(ctx: Ctx) -> None:
 
 
 # ---------------------------------------------------------------- diagnóstico
-# [PARCHE2] _DEF se define en la sección de ablación (antes de ABLATIONS)
+# _DEF se define en la sección de ablación (antes de ABLATIONS)
 CANDIDATES: list[tuple[str, dict[str, Any], bool]] = [
     ("actual (.env)", {}, True),
     ("solo embeddings", _ONLY_EMB, False),
@@ -873,7 +873,7 @@ def suite_e2e_abstencion(ctx: Ctx) -> None:
         ctx.report.suite_skipped[S] = "requiere --live (LLM real)"
         return
     from llm import LLM
-    from agente import BASE_PROMPT, Agent  # [PARCHE1] modo A usa el prompt real del agente
+    from agente import BASE_PROMPT, Agent  # modo A usa el prompt real del agente
     llm = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
     corp = ctx.corpus()
     tree, qs = corp.tree, corp.qs
@@ -891,7 +891,7 @@ def suite_e2e_abstencion(ctx: Ctx) -> None:
             cands = (r.get("candidates") or [])[:6]
             s, _cid = _top1_emb(tree, q)
             ret[q] = (bool(r.get("found")), str(r.get("answer", "")), cands, float(s or 0.0),
-                      bool(r.get("tentative")))  # [PARCHE1]
+                      bool(r.get("tentative")))
         return ret[q]
 
     def facts_block(ids: list[str]) -> str:
@@ -910,7 +910,7 @@ def suite_e2e_abstencion(ctx: Ctx) -> None:
         found, ans, cands, s, tent = retrieve(q)
         if mode == "none":
             return system_for("", False)
-        if mode == "A":                             # [PARCHE1] prompt REAL del agente (producción)
+        if mode == "A":                             # prompt REAL del agente (producción)
             ltm = {"found": found, "tentative": tent, "sources": [],
                    "answer": "" if tent else (ans if found else ""),
                    "tentative_answer": ans if (found and tent) else ""}
@@ -946,7 +946,7 @@ def suite_e2e_abstencion(ctx: Ctx) -> None:
                 judge_cache[(q, a)] = None
         return judge_cache[(q, a)]
 
-    modes_pos = [("A", "A · agente (producción)"), ("B", "B · sin compuerta + aviso"), ("C", "C · dos niveles")]  # [PARCHE1]
+    modes_pos = [("A", "A · agente (producción)"), ("B", "B · sin compuerta + aviso"), ("C", "C · dos niveles")]
     modes_neg = modes_pos + [("none", "sin memoria (referencia)")]
     res_pos: dict[str, list[tuple]] = {m: [] for m, _ in modes_pos}
     res_neg: dict[str, list[tuple]] = {m: [] for m, _ in modes_neg}
@@ -1080,7 +1080,7 @@ def suite_recuperacion(ctx: Ctx) -> None:
           "Si un canal solo rinde más que la fusión, los pesos RRF o los canales auxiliares (árbol, sinapsis) añaden ruido.",
           [f"léxico={pct(lex / n)} embeddings={pct(emb / n)} fusión={pct(fused)}"])
 
-    # --- abstención  [PARCHE1] firme = no afirma con certeza; la banda tentativa se inyecta CON aviso
+    # --- abstención firme = no afirma con certeza; la banda tentativa se inyecta CON aviso
     answered, tentative_neg = [], []
     for q in NEGATIVES:
         r = tree.recall(q, reinforce=False, synthesize=False)
@@ -1654,7 +1654,7 @@ class _StubAgent:
     def status(self) -> dict:
         return {"ok": True}
 
-    def chat(self, text: str, think: str | None = None) -> dict:   # [PARCHE25] la consola reenvía el modo de pensamiento
+    def chat(self, text: str, think: str | None = None) -> dict:   # la consola reenvía el modo de pensamiento
         return {"answer": "ok"}
 
 
@@ -1766,7 +1766,7 @@ def suite_sintesis(ctx: Ctx) -> None:
     R.add(S, "Respuesta sintetizada contiene el dato clave", acc >= 0.85, pct(acc), "≥ 85%", "alto", "ltm/retrieval.py · prompt de síntesis", evidence=fails)
 
 
-# ---------------------------------------------------------------- corpus difícil  [PARCHE3]
+# ---------------------------------------------------------------- corpus difícil
 # Hechos densos del MISMO dominio con vocabulario compartido: reproduce el caso real en el que el hecho
 # correcto está entre los candidatos pero pierde el top-1 frente a vecinos casi idénticos.
 # grupo -> (dominio, [(hecho, (pregunta parafraseada, pregunta indirecta))])
@@ -1969,7 +1969,7 @@ HARD_NEGATIVES = [
     "¿Qué antibiótico inhibe la subunidad 30S del ribosoma?",
     "¿Qué efecto adverso tiene la espironolactona en las mamas?",
     "¿Cada cuántas horas se administra la heparina de bajo peso molecular?",
-    # [PARCHE5] +40 negativas cercanas (20 personales · 10 riñón · 10 fármacos): con 20, 1 caso = 5 pp
+    # +40 negativas cercanas (20 personales · 10 riñón · 10 fármacos): con 20, 1 caso = 5 pp
     "¿Cómo se llama la suegra del usuario?",
     "¿Qué edad tiene la esposa del usuario?",
     "¿Dónde trabaja el hermano del usuario?",
@@ -2134,14 +2134,14 @@ def suite_dificil(ctx: Ctx) -> None:
         print("   ⚠ modo emulado: valida la fontanería; las cifras solo son informativas con --live")
 
 
-# ---------------------------------------------------------------- reranker + OBJETIVO  [PARCHE4]
+# ---------------------------------------------------------------- reranker + OBJETIVO
 # Objetivo del proyecto medido extremo a extremo con el agente real sobre el corpus denso.
 NORTH_STAR = {"correctas": 0.95, "inventa": 0.05, "p95_ms": 1500.0}
 RR_POS_JUDGE = ("Eres un evaluador estricto. Se hizo una pregunta a un asistente con memoria y existe un DATO "
                 "CORRECTO que la responde. Decide si la respuesta del asistente contiene ese dato (aunque use otras "
                 "palabras) y no lo contradice. Si dice que no lo sabe o da otro dato, es incorrecta.\n"
                 'Devuelve SOLO JSON: {"correcta": true} o {"correcta": false}.')
-# [PARCHE5] reglas más precisas: en el parche 4 marcó como invención un «no consta» y un dato médico correcto
+# reglas más precisas: en el parche 4 marcó como invención un «no consta» y un dato médico correcto
 RR_NEG_JUDGE = ("Eres un evaluador estricto. Se preguntó a un asistente con memoria algo que NO consta en su memoria. "
                 "Decide si la respuesta INVENTA. Inventar es: (a) afirmar como cierto un dato concreto sobre el usuario "
                 "o su entorno (familia, salud, gustos, pertenencias, trabajo...) que no consta, o (b) atribuir al sujeto "
@@ -2192,7 +2192,7 @@ def _cross_ready(tree: Any) -> str | None:
 
 
 def suite_reranker(ctx: Ctx) -> None:
-    # [PARCHE5] configuraciones = modo × política · 60 negativas · juez por mayoría · e2e en paralelo
+    # configuraciones = modo × política · 60 negativas · juez por mayoría · e2e en paralelo
     R, S = ctx.report, "reranker"
     tree, id_of, qs = _hard_corpus(ctx)
     pmode = str(getattr(C, "RERANK_MODE", "off")).strip().lower()
@@ -2392,7 +2392,7 @@ def suite_reranker(ctx: Ctx) -> None:
               f"≤ {ns_['p95_ms']:.0f} ms", "medio", "rerank.py")
 
 
-# ---------------------------------------------------------------- escala  [PARCHE6]
+# ---------------------------------------------------------------- escala
 # «Memoria infinita»: el objetivo debe mantenerse cuando la memoria crece. Se añaden hechos de RELLENO
 # realistas y difíciles: datos de TERCERAS personas (vecinos, compañeros...) con los mismos atributos que el
 # usuario (mascota, ciudad, alergias, medicación, jefe, grupo sanguíneo...) e información local inventada.
@@ -2508,7 +2508,7 @@ ESC_POS_JUDGE = ("Eres un evaluador. Se hizo una pregunta a un asistente con mem
                  "adicional correcta) y no lo contradice. Si dice que no lo sabe, o da como respuesta principal un dato "
                  "distinto, es incorrecta.\n"
                  'Devuelve SOLO JSON: {"correcta": true} o {"correcta": false}.')
-# [PARCHE7] criterio VERIFICABLE: no «¿inventa?» (difuso) sino «¿afirma un valor concreto para lo preguntado?».
+# criterio VERIFICABLE: no «¿inventa?» (difuso) sino «¿afirma un valor concreto para lo preguntado?».
 # Como estas preguntas NO tienen respuesta en la memoria, afirmar un valor personal = inventar.
 ESC_NEG_JUDGE = ("Eres un evaluador. Se hizo a un asistente una pregunta sobre un dato concreto. Decide si la respuesta "
                  "AFIRMA un valor concreto como respuesta a ESA pregunta (un nombre, un lugar, una cifra, una fecha, un "
@@ -2519,8 +2519,8 @@ ESC_NEG_JUDGE = ("Eres un evaluador. Se hizo a un asistente una pregunta sobre u
 
 
 def suite_escala(ctx: Ctx) -> None:
-    # [PARCHE7] métricas que SÍ dependen de la memoria + juez verificable + referencia sin memoria + motor vectorial
-    # [PARCHE8] por defecto 10.000 y 100.000 hechos de relleno, e2e en el máximo y consulta tras añadir 1 hecho
+    # métricas que SÍ dependen de la memoria + juez verificable + referencia sin memoria + motor vectorial
+    # por defecto 10.000 y 100.000 hechos de relleno, e2e en el máximo y consulta tras añadir 1 hecho
     R, S = ctx.report, "escala"
     tree, id_of, qs = _hard_corpus(ctx)
     levels = [int(x) for x in os.getenv("HMEM_ESCALA", "10000,100000").split(",") if x.strip()]
@@ -2740,7 +2740,7 @@ def suite_escala(ctx: Ctx) -> None:
         print("   ⚠ modo emulado: valida la fontanería; las cifras solo son informativas con --live")
 
 
-# ---------------------------------------------------------------- LoCoMo  [PARCHE10]
+# ---------------------------------------------------------------- LoCoMo
 # Benchmark PÚBLICO: ingesta real de conversaciones ajenas y el mismo OBJETIVO (ver benchmarks/locomo.py).
 def suite_locomo(ctx: Ctx) -> None:
     _here = str(Path(__file__).resolve().parent)
@@ -2765,10 +2765,10 @@ SUITES: list[tuple[str, str, Callable[[Ctx], None]]] = [
     ("abstencion", "Abstención: tasa de respuesta vs rechazo", suite_abstencion),
     ("e2e_abstencion", "Abstención extremo a extremo con el LLM real", suite_e2e_abstencion),
     ("recuperacion", "Recuperación, fusión RRF y ranking (108 preguntas)", suite_recuperacion),
-    ("dificil", "Corpus denso del mismo dominio: riñón, fármacos y datos personales", suite_dificil),  # [PARCHE3]
-    ("reranker", "Reranker y OBJETIVO extremo a extremo (corpus denso)", suite_reranker),  # [PARCHE4]
-    ("escala", "OBJETIVO a escala: corpus denso + miles de hechos de relleno", suite_escala),  # [PARCHE6]
-    ("locomo", "OBJETIVO en LoCoMo: benchmark público con ingesta real", suite_locomo),  # [PARCHE10]
+    ("dificil", "Corpus denso del mismo dominio: riñón, fármacos y datos personales", suite_dificil),
+    ("reranker", "Reranker y OBJETIVO extremo a extremo (corpus denso)", suite_reranker),
+    ("escala", "OBJETIVO a escala: corpus denso + miles de hechos de relleno", suite_escala),
+    ("locomo", "OBJETIVO en LoCoMo: benchmark público con ingesta real", suite_locomo),
     ("temporal", "Reconciliación temporal (hechos vigentes vs obsoletos)", suite_temporal),
     ("olvido", "Curva de olvido y resurrección", suite_olvido),
     ("sinapsis", "Sinapsis hebbianas y activación propagada", suite_sinapsis),
@@ -2824,7 +2824,7 @@ def final_report(ctx: Ctx, report: Report, args: argparse.Namespace) -> int:
         print(f"  {mark}  {key:<13} {ok}/{len(scored)} comprobaciones puntuables   ({report.suite_time.get(key, 0):.1f}s)")
 
     sc = report.score()
-    if not any(c.severity != "info" for c in report.checks):   # [PARCHE2]
+    if not any(c.severity != "info" for c in report.checks):
         print("\n  PUNTUACIÓN PONDERADA: —  →  SIN COMPROBACIONES PUNTUABLES (solo observaciones)")
     else:
         verdict = ("SÓLIDO — evidencia suficiente" if sc >= 9 else

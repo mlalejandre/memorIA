@@ -10,16 +10,16 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import config as C
-import descomponer  # [PARCHE19]
-import pensar  # [PARCHE24]
-import documentos  # [PARCHE28]
-import refinar  # [PARCHE20]
+import descomponer
+import pensar
+import documentos
+import refinar
 from cartuchos import CartridgeManager
 from corto_plazo import ShortTermMemory, fmt_ts, role_label
 from largo_plazo import MemoryTree, MemLLM
 from llm import LLM
 
-# [PARCHE6] regla anti-deducción: las 2 invenciones reales del parche 5 fueron deducciones de datos parecidos
+# regla anti-deducción: las 2 invenciones reales del parche 5 fueron deducciones de datos parecidos
 BASE_PROMPT = (
     "Eres un asistente con DOS memorias consultadas en paralelo para cada interacción:\n"
     "- Memoria a corto plazo: resúmenes y mensajes de ESTA conversación.\n"
@@ -29,7 +29,7 @@ BASE_PROMPT = (
     "de la memoria larga si es relevante. Sobre el usuario y su entorno, afirma solo lo que conste de forma "
     "explícita en la memoria: si un dato personal no consta, dilo claramente en vez de deducirlo de otros "
     "datos parecidos. "
-    # [PARCHE12] atribución y fechas relativas: en LoCoMo, 52 de 57 invenciones atribuían a la persona
+    # atribución y fechas relativas: en LoCoMo, 52 de 57 invenciones atribuían a la persona
     # preguntada lo que otra persona dijo de sí misma (42 de ellas, leyéndolo de la memoria episódica).
     "Atribución: cada recuerdo indica de quién es o quién lo dijo. Antes de responder, comprueba que el dato "
     "pertenece a la persona o cosa por la que se pregunta; si en la memoria pertenece a otra (otra persona, otro "
@@ -38,7 +38,7 @@ BASE_PROMPT = (
     "fecha de ese recuerdo, no de la actual. Fecha actual: {now}."
 )
 
-# [PARCHE22] respuesta directa (ANSWER_DIRECT=1, experimental). Auditoría del parche 16: las respuestas fallidas miden
+# respuesta directa (ANSWER_DIRECT=1, experimental). Auditoría del parche 16: las respuestas fallidas miden
 # 593 caracteres de mediana frente a 332 las acertadas, y 46 fallos contenían la respuesta correcta entre otras
 # alternativas. Primero el dato, luego (si hace falta) la aclaración: más preciso y más rápido de generar.
 DIRECT_RULE = (
@@ -47,7 +47,7 @@ DIRECT_RULE = (
     "alternativas que no responden a la pregunta. Si el dato no consta o pertenece a otra persona, esa es la primera "
     "frase.")
 
-# [PARCHE29] atribución a sucesos y documentos (ATTRIB_EVENTS=1, experimental). Parches 27-28 (cartucho «santander»):
+# atribución a sucesos y documentos (ATTRIB_EVENTS=1, experimental). Parches 27-28 (cartucho «santander»):
 # el agente atribuía datos de un suceso al otro («el incendio de 1941 lo provocó el vapor Cabo Machichaco») y,
 # cuando faltaba el dato, lo completaba con lo que creía saber («un cigarrillo mal apagado»).
 EVENT_RULE = (
@@ -58,13 +58,13 @@ EVENT_RULE = (
 
 
 def now_str() -> str:
-    """[PARCHE22] Fecha actual del prompt. HMEM_FIXED_NOW la congela (benchmark reproducible y cacheable)."""
+    """Fecha actual del prompt. HMEM_FIXED_NOW la congela (benchmark reproducible y cacheable)."""
     return os.getenv("HMEM_FIXED_NOW", "").strip() or time.strftime("%d/%m/%Y %H:%M")
 
 
 TRUNCATED_NOTE = "\n\n[⚠️ Respuesta truncada por el límite de tokens (STM_ANSWER_MAX_TOKENS).]"
 
-# [PARCHE1] Aviso para recuerdos de la banda tentativa (similitud dudosa): solo se usan si responden de verdad.
+# Aviso para recuerdos de la banda tentativa (similitud dudosa): solo se usan si responden de verdad.
 LTM_CAUTION = (
     "Los siguientes recuerdos se recuperaron por similitud y PUEDEN NO SER RELEVANTES para la pregunta. "
     "Úsalos solo si responden de verdad y directamente a lo que se pregunta; si no responden, di claramente "
@@ -248,7 +248,7 @@ class Agent:
 
         def _query_single_tree(tree_obj: Any, q: str) -> dict[str, Any]:
             if hasattr(tree_obj, "recall"):
-                kw = {"extra_queries": subqueries} if subqueries else {}  # [PARCHE19]
+                kw = {"extra_queries": subqueries} if subqueries else {}
                 return tree_obj.recall(q, tree_obj is self.ltm,
                                        synthesize=not bool(getattr(C, 'LTM_DIRECT_RETRIEVAL', False)), **kw)
             elif hasattr(tree_obj, "ask"):
@@ -268,7 +268,7 @@ class Agent:
                     except Exception as e:
                         results[cid] = {"found": False, "error": str(e)}
 
-            # [PARCHE1] Separar recuerdos firmes de los tentativos (por cartucho) para avisar al LLM.
+            # Separar recuerdos firmes de los tentativos (por cartucho) para avisar al LLM.
             firm_items: list[str] = []
             tent_items: list[str] = []
             all_sources = []
@@ -312,10 +312,10 @@ class Agent:
 
     def _build_system(self, stm: dict[str, Any], ltm: dict[str, Any],
                       epi: list[dict[str, Any]] | None = None) -> str:
-        parts = [BASE_PROMPT.format(now=now_str())]  # [PARCHE22]
+        parts = [BASE_PROMPT.format(now=now_str())]
         if getattr(C, "ANSWER_DIRECT", False):
             parts.append(DIRECT_RULE)
-        if getattr(C, "ATTRIB_EVENTS", False):   # [PARCHE29]
+        if getattr(C, "ATTRIB_EVENTS", False):
             parts.append(EVENT_RULE)
         if stm.get("summaries"):
             parts.append("\n## Resumen de la conversación previa (memoria corta)")
@@ -325,7 +325,7 @@ class Agent:
             parts.append("\n## Mensajes antiguos relevantes de esta charla (memoria corta)")
             for h in stm["hits"]:
                 parts.append(f"[{fmt_ts(h['ts'])} · {role_label(h)}] {h['text'][:500]}")
-        # [PARCHE1] Recuerdos firmes y tentativos en bloques distintos; los tentativos llevan aviso.
+        # Recuerdos firmes y tentativos en bloques distintos; los tentativos llevan aviso.
         firm = str(ltm.get("answer") or "").strip() if ltm.get("found") else ""
         tent = str(ltm.get("tentative_answer") or "").strip() if ltm.get("found") else ""
         if firm and ltm.get("tentative") and "tentative_answer" not in ltm:
@@ -342,12 +342,12 @@ class Agent:
         if epi:
             seen = {str(e.get("text", "")).strip() for e in stm.get("recent", [])}
             seen |= {str(h.get("text", "")).strip() for h in stm.get("hits", [])}
-            fresh = [e for e in epi if str(e["text"]).strip() not in seen][:max(1, int(getattr(C, "EPI_PROMPT_K", 20)))]  # [PARCHE16]
+            fresh = [e for e in epi if str(e["text"]).strip() not in seen][:max(1, int(getattr(C, "EPI_PROMPT_K", 20)))]
             if fresh:
                 parts.append("\n## Recuerdos literales de conversaciones pasadas (memoria episódica)")
                 parts.append("Estos episodios son transcripciones fechadas de lo que se dijo entonces, no necesariamente el estado actual. Para preguntas sobre el presente, prioriza los hechos de memoria a largo plazo cuya vigencia esté activa; usa episodios como contexto histórico y no como prueba de que un hecho siga vigente.")
                 parts.append("Cada episodio indica quién habló: lo que alguien cuenta en primera persona («yo», «mi») "
-                             "es de quien habla, no de su interlocutor.")  # [PARCHE12]
+                             "es de quien habla, no de su interlocutor.")
                 for e in fresh:
                     parts.append(f"[{fmt_ts(e['ts'])} · {role_label(e)}] {e['text'][:500]}")
         return "\n".join(parts)
@@ -365,8 +365,8 @@ class Agent:
         if not fn:
             return []
         try:
-            kw = {"extra_queries": subqueries} if subqueries else {}  # [PARCHE19]
-            return fn(text, getattr(C, "EPI_LOOKUP_K", 22), **kw) or []  # [PARCHE17]
+            kw = {"extra_queries": subqueries} if subqueries else {}
+            return fn(text, getattr(C, "EPI_LOOKUP_K", 22), **kw) or []
         except Exception as exc:
             self.log(f"[Episódica] {exc}")
             return []
@@ -383,7 +383,7 @@ class Agent:
             self.log(f"[Episódica] importación fallida: {exc}")
 
     def _subqueries(self, text: str) -> list[str]:
-        """[PARCHE19] Subconsultas para preguntas que reúnen varios datos (LTM_DECOMPOSE=1)."""
+        """Subconsultas para preguntas que reúnen varios datos (LTM_DECOMPOSE=1)."""
         if not descomponer.enabled():
             return []
         self._pause_ltm()
@@ -396,7 +396,7 @@ class Agent:
         return subs
 
     def _second_pass(self, text: str, ltm_res: dict[str, Any], epi: list[dict[str, Any]]) -> list[str]:
-        """[PARCHE20] Consultas nuevas a partir de lo recuperado en la 1.ª pasada (LTM_SECOND_PASS=1)."""
+        """Consultas nuevas a partir de lo recuperado en la 1.ª pasada (LTM_SECOND_PASS=1)."""
         blob = "\n".join(str(ltm_res.get(k) or "") for k in ("answer", "tentative_answer"))
         lines = [ln.strip().lstrip("•").strip() for ln in blob.splitlines() if ln.strip().startswith("•")]
         self._pause_ltm()
@@ -417,14 +417,14 @@ class Agent:
 
     @staticmethod
     def think_plan(text: str, think: str | None = None) -> tuple[dict[str, Any], dict[str, Any]]:
-        """[PARCHE24] ¿Pensar antes de responder? → (argumentos para el LLM, información para la interfaz)."""
+        """¿Pensar antes de responder? → (argumentos para el LLM, información para la interfaz)."""
         on, why = pensar.decide(text, think)
         info = {"mode": pensar.configured_mode() if think is None else pensar.normalize(think), "on": on, "reason": why}
         kw: dict[str, Any] = {"thinking": True, "max_tokens": int(C.ANSWER_MAX_TOKENS) + pensar.extra_tokens()} if on else {}
         return kw, info
 
     def chat_stream(self, text: str, think: str | None = None):
-        """think: 'off' | 'auto' | 'on' para este mensaje (None = AGENT_THINK). [PARCHE24]"""
+        """think: 'off' | 'auto' | 'on' para este mensaje (None = AGENT_THINK)."""
         text = (text or "").strip()
         if not text:
             yield {"event": "error", "error": "Mensaje vacío"}
@@ -434,7 +434,7 @@ class Agent:
             try:
                 t0 = time.perf_counter()
                 self._set("RECEPCION", store="run")
-                subs = self._subqueries(text)  # [PARCHE19]
+                subs = self._subqueries(text)
                 epi_hits = self._episodes_for(text, subs)
                 self.stm.add("user", text)
                 self._episode("user", text)
@@ -447,7 +447,7 @@ class Agent:
                     stm_ctx = f_stm.result()
                     ltm_res = f_ltm.result()
 
-                if refinar.second_pass_enabled():  # [PARCHE20] 2.ª pasada guiada por lo recuperado
+                if refinar.second_pass_enabled():  # 2.ª pasada guiada por lo recuperado
                     more = self._second_pass(text, ltm_res, epi_hits)
                     if more:
                         epi_hits = self._episodes_for(text, subs + more)
@@ -465,7 +465,7 @@ class Agent:
                             "summaries": len(stm_ctx.get("summaries", [])), "ms": stm_ctx.get("ms", 0)}
                 yield {"event": "context", "stm": stm_info, "ltm": ltm_res}
 
-                llm_kw, think_info = self.think_plan(text, think)   # [PARCHE24] solo la respuesta final
+                llm_kw, think_info = self.think_plan(text, think)   # solo la respuesta final
                 if think_info["on"]:
                     yield {"event": "thinking", **think_info}
                 t1 = time.perf_counter()
@@ -500,7 +500,7 @@ class Agent:
                     "answer": answer + (TRUNCATED_NOTE if truncated else ""), "error": None,
                     "stm": stm_info, "ltm": ltm_res,
                     "llm_ms": llm_ms, "total_ms": round((time.perf_counter() - t0) * 1000),
-                    "tokens": self.stm.total_tokens(), "think": think_info,   # [PARCHE24]
+                    "tokens": self.stm.total_tokens(), "think": think_info,
                 }
                 self.history.append({"ts": time.time(), "q": text[:100], "res": res_obj})
                 del self.history[:-30]
@@ -536,7 +536,7 @@ class Agent:
                 self.state["ltm_detail"] = f"Ingesta: extrayendo conceptos del bloque {idx + 1}/{len(chunks)}..."
                 facts = None
                 if hasattr(self.ltm, "extract_facts"):
-                    if documentos.enabled() and (explicit or idx > 0):   # [PARCHE28] hechos autocontenidos
+                    if documentos.enabled() and (explicit or idx > 0):   # hechos autocontenidos
                         facts = documentos.extract(self.ltm.llm, chunk, effective_src,
                                                    chunks[idx - 1] if idx > 0 else "")
                     if facts is None:

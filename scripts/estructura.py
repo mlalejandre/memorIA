@@ -25,8 +25,8 @@ EXCLUDED_DIRS = {
     "backups",
     ".parche3_backup",
     ".parche_backup",
-    "resultados_parches",  # [PARCHE1]
-    "locomo_cache",  # [PARCHE10] datos de LoCoMo y memorias ingeridas
+    "resultados_parches",
+    "locomo_cache",  # datos de LoCoMo y memorias ingeridas
 }
 
 # Archivos que NO queremos incluir.
@@ -97,7 +97,7 @@ def is_excluded_file(path: Path) -> bool:
     for suf in EXCLUDED_SUFFIXES:
         if name.endswith(suf):
             return True
-    if name.startswith("parche") and name.endswith(".py"):  # [PARCHE1] scripts de parche
+    if name.startswith("parche") and name.endswith(".py"):  # scripts de parche
         return True
     return False
 

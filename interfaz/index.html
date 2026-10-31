@@ -109,7 +109,7 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
     <button onclick="openExplorer()" style="border-color:var(--cyan);color:var(--cyan);background:rgba(6,182,212,.15)">🗂️ Gestor & Explorador de Memoria</button>
     <button onclick="openModal('modal-tree')">🌲 Ver Árbol LTM</button>
     <button onclick="openModal('modal-ingest')">📥 Ingestar Libro/Paper</button>
-    <button onclick="openServers()" style="border-color:var(--green);color:var(--green);background:rgba(16,185,129,.12)">🧩 Modelos y GPUs</button>   <!-- [PARCHE31] -->
+    <button onclick="openServers()" style="border-color:var(--green);color:var(--green);background:rgba(16,185,129,.12)">🧩 Modelos y GPUs</button>
     <button onclick="openDebug()">🛠️ Diagnóstico & Bugs</button>
   </div>
 </header>
@@ -209,10 +209,10 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
     <div class="row" style="justify-content:space-between">
       <div class="row" style="gap:8px;align-items:center">
         <button class="send" id="send" onclick="sendMsg()">Enviar al Agente</button>
-        <!-- [PARCHE24] pensamiento del agente: off / auto / on -->
+        <!-- pensamiento del agente: off / auto / on -->
         <label for="think" style="font-size:.72rem;color:var(--mu)" title="Pensar antes de responder: más lento, a veces más preciso en fechas, recuentos y comparaciones">🧠 Pensar</label>
         <select id="think" onchange="saveThink()" title="Por defecto: lo que diga AGENT_THINK · No: responde directo · Auto: el agente decide (fechas, recuentos, comparaciones) · Siempre: piensa en cada respuesta" style="background:var(--inp);color:var(--tx);border:1px solid var(--bd);padding:4px 8px;border-radius:6px;font-size:.75rem">
-          <option value="default">Por defecto</option>   <!-- [PARCHE26] = AGENT_THINK del .env -->
+          <option value="default">Por defecto</option>   <!-- = AGENT_THINK del .env -->
           <option value="off">No</option>
           <option value="auto">Auto</option>
           <option value="on">Siempre</option>
@@ -294,7 +294,7 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
   </div>
 </div>
 
-<!-- [PARCHE31] Modal: modelos y GPUs de cada servidor -->
+<!-- Modal: modelos y GPUs de cada servidor -->
 <div class="modal" id="modal-servers" onclick="if(event.target===this) closeModal('modal-servers')">
   <div class="modal-c" style="width:1080px">
     <div class="modal-h">
@@ -476,7 +476,7 @@ async function poll() {
     const srvOk = !!s.server_ready;
     $('b-srv').className = 'badge ' + (srvOk ? 'ok' : 'warn');
     $('b-srv').innerHTML = '<span class="pulse-dot"></span>' + (srvOk ? 'Servidores LLM ✓' : 'Servidores sin verificar');
-    if (s.system_info) {   // [PARCHE31] con el modelo que de verdad tiene cargado cada servidor
+    if (s.system_info) {   // con el modelo que de verdad tiene cargado cada servidor
       const si = s.system_info;
       $('sub-info').textContent = 'LTM :' + si.gpu0_port + (si.ltm_model ? ' ' + si.ltm_model : '') + ' · STM :' + si.gpu1_port + (si.stm_model ? ' ' + si.stm_model : ' · ' + si.model);
     }
@@ -583,7 +583,7 @@ async function readSSE(resp, onEvent) {
   }
 }
 
-function saveThink() {   // [PARCHE24] preferencia del selector «Pensar» (solo este navegador)
+function saveThink() {   // preferencia del selector «Pensar» (solo este navegador)
   try { localStorage.setItem('hmem_think', $('think').value); } catch(e) {}
 }
 function loadThink() {
@@ -623,7 +623,7 @@ async function sendMsg() {
   $('msgs').appendChild(bubble);
   let acc = '', got = false;
   try {
-    const tv = $('think') ? $('think').value : 'default';   // [PARCHE24] [PARCHE26] «Por defecto» = AGENT_THINK
+    const tv = $('think') ? $('think').value : 'default';   // «Por defecto» = AGENT_THINK
     const think = tv === 'default' ? null : tv;
     const resp = await fetch('/api/chat/stream', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({text:t, think:think})});
     if(!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status);
@@ -667,7 +667,7 @@ async function submitIngest() {
   const txt = $('ingest-txt').value.trim();
   const src = $('ingest-src').value.trim();
   if(!txt) { alert('Pega texto para ingestar'); return; }
-  // [PARCHE29] una fuente por documento: en el parche 27 el segundo artículo heredó la fuente del primero y el
+  // una fuente por documento: en el parche 27 el segundo artículo heredó la fuente del primero y el
   // agente mezcló los dos sucesos. Sin fuente, o con la misma de la ingesta anterior, se pide confirmación.
   if(!src && !confirm('No has indicado la fuente de este documento. Sin fuente, el agente no podrá distinguirlo de otros.\n\n¿Ingestar igualmente?')) return;
   if(src && window._lastIngestSrc === src && window._lastIngestTxt !== txt &&
@@ -691,9 +691,9 @@ async function submitIngest() {
   if(result) {
     alert('✓ Ingesta completada: ' + result.facts + ' hechos registrados en el árbol.\n📌 Fuente: ' + result.source);
     closeModal('modal-ingest');
-    window._lastIngestSrc = src; window._lastIngestTxt = txt;   // [PARCHE29]
+    window._lastIngestSrc = src; window._lastIngestTxt = txt;
     $('ingest-txt').value = '';
-    $('ingest-src').value = '';   // [PARCHE29] la fuente no se arrastra al siguiente documento
+    $('ingest-src').value = '';   // la fuente no se arrastra al siguiente documento
   }
   poll();
 }
@@ -732,7 +732,7 @@ async function act(a) {
   polle(); poll();
 }
 
-// ==================== [PARCHE31] MODELOS Y GPUs ====================
+// ==================== MODELOS Y GPUs ====================
 let _srvInv = null, _srvBusy = false;
 async function openServers() { openModal('modal-servers'); await loadServers(); }
 function gb(mb) { return (mb == null ? '?' : (mb / 1024).toFixed(1)); }
@@ -779,7 +779,7 @@ function renderServers(inv) {
     const curGpu = s.gpu != null ? String(s.gpu) : '';
     html += '<label class="stat-sub">GPU</label><select id="srv-gpu-' + role + '" style="' + sel + '">' +
       (curGpu ? '' : '<option value="" selected>la de ahora</option>') +
-      gpus.map(g => {   // [PARCHE32] una GPU para la que tu llama-server no está compilado no se puede elegir
+      gpus.map(g => {   // una GPU para la que tu llama-server no está compilado no se puede elegir
         const bad = s.gpu_ok && s.gpu_ok[g.index] === false;
         return '<option value="' + esc(g.index) + '"' + (String(g.index) === curGpu ? ' selected' : '') + (bad ? ' disabled' : '') + '>GPU ' + esc(g.index) + ' · ' + esc(g.name) +
           ' · libres ' + gb(g.total_mb - g.used_mb + (String(g.index) === curGpu && s.vram_mb ? s.vram_mb : 0)) + ' GB' +

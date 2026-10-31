@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# Tests del selector de modelos y GPUs (sin red ni SSH: un servidor remoto simulado; nunca toca body/).  [PARCHE31]
+# Tests del selector de modelos y GPUs (sin red ni SSH: un servidor remoto simulado; nunca toca body/).
 from __future__ import annotations
 
 import re
@@ -54,7 +54,7 @@ class FakeRemote:
         self.add(8089, [BIN, "-m", BGE, "--alias", "bge-m3", "--port", "8089", "--embeddings", "-c", "8192"],
                  {"CUDA_VISIBLE_DEVICES": "1"}, "08:00.0", 1500)
         self.fail_models = set()
-        # [PARCHE32] tu compilación: 3090 y 4090 sí, 2060 no
+        # tu compilación: 3090 y 4090 sí, 2060 no
         self.caches = {BIN: ["CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=86;89", "GGML_NATIVE:BOOL=OFF"],
                        BIN75: ["CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=75", "GGML_NATIVE:BOOL=OFF"]}
 
@@ -325,7 +325,7 @@ class TestModelos(unittest.TestCase):
             self.assertFalse(agent._chat_lock.locked() or agent.ltm_lock.locked())
             self.assertTrue(agent.logs)
 
-    # ---------------------------------------------------------------- [PARCHE32] arquitecturas CUDA
+    # ---------------------------------------------------------------- arquitecturas CUDA
     def test_arch_ok(self):
         b = {"archs": ["86", "89"]}
         self.assertTrue(modelos.arch_ok("8.6", b))

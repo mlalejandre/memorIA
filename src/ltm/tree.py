@@ -23,7 +23,7 @@ try:
 except ImportError:
     _vectores = None
 try:
-    import rerank as _rerank  # [PARCHE4]
+    import rerank as _rerank
 except ImportError:
     _rerank = None
 
@@ -68,7 +68,7 @@ class MemoryTree(DatabaseMixin, StorageMixin, RetrievalMixin, HomeostasisMixin, 
             except Exception:
                 self.emb = None
 
-        self.reranker = None  # [PARCHE4] activo solo si RERANK_MODE = llm | cross
+        self.reranker = None  # activo solo si RERANK_MODE = llm | cross
         if _rerank is not None:
             try:
                 self.reranker = _rerank.Reranker(self)

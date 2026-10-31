@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""refinar.py — Dos formas de reunir evidencia repartida entre sesiones, con el MISMO presupuesto.  [PARCHE20]
+"""refinar.py — Dos formas de reunir evidencia repartida entre sesiones, con el MISMO presupuesto.
 
 Motivo (parche 19): el multi-salto de LoCoMo casi nunca son preguntas sobre varias personas, sino sobre UNA persona
 con la evidencia repartida en varias sesiones ("What did Caroline research?"). Partir la pregunta no ayuda (el LLM

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""[PARCHE27] Examen de un cartucho con preguntas escritas a mano (documento cargado por el usuario).
+"""Examen de un cartucho con preguntas escritas a mano (documento cargado por el usuario).
 
     python3 benchmarks/cartucho.py --cartucho santander --preguntas experiment/preguntas_santander.json
 
@@ -11,7 +11,7 @@
 · Por cada pregunta, «claves» (fragmentos que debe contener la evidencia) separan los fallos en: ingesta (la
   memoria no tiene el dato), recuperación (está en la memoria pero no llega al prompt) y respuesta (llegó y falla).
 
-[PARCHE28] Desde textos, sin tocar ningún cartucho:
+Desde textos, sin tocar ningún cartucho:
     python3 benchmarks/cartucho.py --textos "experiment/textos/cabo_machichaco.txt=Wikipedia: Cabo Machichaco (vapor);\
 experiment/textos/incendio_santander_1941.txt=Wikipedia: Incendio de Santander de 1941" \
         --variantes actual,autocontenidos --preguntas experiment/preguntas_santander.json --modos no
@@ -42,7 +42,7 @@ os.environ.setdefault("HMEM_FIXED_NOW", "31/10/2026 12:00")
 
 import config as C  # noqa: E402
 
-MODES = ("sin memoria", "no", "auto", "siempre", "atrib", "ref")   # [PARCHE29] atrib = no + ATTRIB_EVENTS · [PARCHE30] ref = como «no», pero responde el servidor LTM
+MODES = ("sin memoria", "no", "auto", "siempre", "atrib", "ref")   # atrib = no + ATTRIB_EVENTS · ref = como «no», pero responde el servidor LTM
 
 POS_JUDGE = (
     "Eres un evaluador. Se hizo a un asistente con memoria una pregunta sobre unos documentos que había guardado, y "
@@ -150,7 +150,7 @@ def paired(rows: list[dict[str, Any]], a: str, b: str) -> dict[str, Any]:
     down = sum(1 for i in ids if good(ra[i]) and not good(rb[i]))
     out = {"n": len(ids), "mejoran": up, "empeoran": down, "p": sign_p(down, up)}
     for name, sel in (("positivas", lambda r: r["tipo"] != "trampa"), ("trampas", lambda r: r["tipo"] == "trampa")):
-        ii = [i for i in ids if sel(ra[i])]   # [PARCHE29] desglose
+        ii = [i for i in ids if sel(ra[i])]   # desglose
         u = sum(1 for i in ii if not good(ra[i]) and good(rb[i]))
         d = sum(1 for i in ii if good(ra[i]) and not good(rb[i]))
         out[name] = {"n": len(ii), "mejoran": u, "empeoran": d, "p": sign_p(d, u)}
@@ -267,9 +267,9 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
         for k, (mode, q) in enumerate(jobs, 1):
             if mode == "sin memoria":
                 system, th, why = BASE_PROMPT.format(now=now_str()), False, "sin memoria"
-            elif mode == "ref":   # [PARCHE30] mismo prompt que «no», respondido por el servidor de la memoria larga
+            elif mode == "ref":   # mismo prompt que «no», respondido por el servidor de la memoria larga
                 system, th, why = ret[q["id"]]["system"], False, "modelo de referencia (LTM)"
-            elif mode == "atrib":   # [PARCHE29] mismo contexto, con la regla de sucesos y documentos
+            elif mode == "atrib":   # mismo contexto, con la regla de sucesos y documentos
                 prev = getattr(C, "ATTRIB_EVENTS", False)
                 C.ATTRIB_EVENTS = True
                 try:
@@ -283,7 +283,7 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
             mt = int(C.ANSWER_MAX_TOKENS) + pensar.extra_tokens() if th else 700
             t_a = time.perf_counter()
             try:
-                who = jchat if mode == "ref" else chat   # [PARCHE30]
+                who = jchat if mode == "ref" else chat
                 ans = who.chat([{"role": "system", "content": system}, {"role": "user", "content": q["q"]}],
                                max_tokens=mt, temperature=0.0, cache_prompt=False,
                                **({"thinking": True} if th else {"thinking": False}))

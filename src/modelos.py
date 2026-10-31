@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""[PARCHE31] Elegir qué modelo carga cada servidor y en qué GPU.
+"""Elegir qué modelo carga cada servidor y en qué GPU.
 
 Lo usan el panel «🧩 Modelos y GPUs» de la consola y scripts/modelos.py. Por SSH (o en local si SERVER_IP es
 127.0.0.1) hace tres cosas:
@@ -126,7 +126,7 @@ def _script(ports: list[int], dirs: list[str], with_state: bool = True, bins: li
         q6 = "index,pci.bus_id,name,memory.used,memory.total,compute_cap"
         lines += [
             "echo '##GPUS'",
-            # [PARCHE32] compute_cap (drivers antiguos no lo tienen: entonces sin él)
+            # compute_cap (drivers antiguos no lo tienen: entonces sin él)
             f"if out=$(nvidia-smi --query-gpu={q6} --format=csv,noheader,nounits 2>/dev/null); then "
             "echo \"$out\" | sed 's/^/c6, /'; else "
             "nvidia-smi --query-gpu=index,pci.bus_id,name,memory.used,memory.total --format=csv,noheader,nounits "
@@ -147,7 +147,7 @@ def _script(ports: list[int], dirs: list[str], with_state: bool = True, bins: li
                 "tr '\\0' '\\n' < /proc/$pid/cmdline | sed 's/^/arg=/'; "
                 "tr '\\0' '\\n' < /proc/$pid/environ 2>/dev/null | grep -E '^CUDA_(VISIBLE_DEVICES|DEVICE_ORDER)=' "
                 "| sed 's/^/env=/'; "
-                # [PARCHE32] arquitecturas CUDA con las que se compiló ese llama-server (build/CMakeCache.txt)
+                # arquitecturas CUDA con las que se compiló ese llama-server (build/CMakeCache.txt)
                 f"{_CACHE_GREP} \"$(dirname \"$(dirname \"$(readlink /proc/$pid/exe)\")\")/CMakeCache.txt\" 2>/dev/null "
                 "| sed 's/^/cache=/'; fi",
             ]
@@ -371,7 +371,7 @@ def inventory(run: Callable[..., Any] | None = None, health: Callable[[int], boo
                "config": {"model": cfg["model"], "gpu": cfg["gpu"], "ctx": cfg["ctx"]},
                "env_default": dict(C.ENV_SERVER_DEFAULTS.get(role, {})),
                "chosen": role in base["choices"]}
-        # [PARCHE32] ¿en qué GPU puede arrancar este servidor con el llama-server que le tocaría?
+        # ¿en qué GPU puede arrancar este servidor con el llama-server que le tocaría?
         srv["gpu_ok"] = {x["index"]: arch_ok(x.get("cap"), builds.get(binary_for(srv, x["index"]))) for x in gpus}
         srv["archs"] = (builds.get(p["exe"]) or {}).get("archs")
         if g:
@@ -435,7 +435,7 @@ def resolve_model(query: str, models: list[dict[str, Any]], kind: str = "llm") -
         return hits[0]["path"]
     if not hits:
         raise ValueError(f"no encuentro ningún modelo que contenga «{q}»")
-    # [PARCHE32] «GSQ-RCO-IQ3_S» → el archivo que TERMINA así, no el «…IQ3_S-mtp»
+    # «GSQ-RCO-IQ3_S» → el archivo que TERMINA así, no el «…IQ3_S-mtp»
     ends = [m for m in hits if Path(m["file"]).stem.lower().endswith(ql)]
     if len(ends) == 1:
         return ends[0]["path"]
@@ -482,7 +482,7 @@ def plan(role: str, inv: dict[str, Any], model: str | None = None, gpu: str | in
         new_ctx = _int_or(ctx, -1) or -1
         if not 2048 <= new_ctx <= 1048576:
             raise ValueError(f"Contexto no válido: {ctx!r} (entre 2048 y 1048576 tokens)")
-    # [PARCHE32] binario para esa GPU y si sus arquitecturas CUDA la cubren
+    # binario para esa GPU y si sus arquitecturas CUDA la cubren
     new_bin = binary_for(srv, new_gpu)
     gx = next((x for x in gpus if x["index"] == new_gpu), None) if new_gpu is not None else None
     if gx is not None and arch_ok(gx.get("cap"), (inv.get("builds") or {}).get(new_bin)) is False:
@@ -772,7 +772,7 @@ def switch_guarded(agent: Any, role: str, **kw: Any) -> Iterator[dict[str, Any]]
             chat_lock.release()
 
 
-# ------------------------------------------------------------------ [PARCHE32] latencia de los embeddings
+# ------------------------------------------------------------------ latencia de los embeddings
 def _post(url: str, body: dict[str, Any], timeout: float) -> dict[str, Any]:
     req = urllib.request.Request(url, data=json.dumps(body).encode("utf-8"),
                                  headers={"Content-Type": "application/json"}, method="POST")
@@ -850,7 +850,7 @@ def emb_latency(n: int = 40, inv: dict[str, Any] | None = None, load: bool = Tru
             "load": _stats(loaded), "gen_error": gen_err}
 
 
-# ------------------------------------------------------------------ [PARCHE32] compilar llama-server para una GPU
+# ------------------------------------------------------------------ compilar llama-server para una GPU
 def build_script(src_build: str, arch: str, jobs: int = 8) -> tuple[str, str, str]:
     """(orden, carpeta nueva, log). Copia las opciones GGML_/LLAMA_ y los compiladores de TU compilación y cambia
     solo la arquitectura CUDA; compila en <fuente>/build-sm<arch>, sin tocar build/."""

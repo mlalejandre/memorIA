@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""[PARCHE28] Ingesta de DOCUMENTOS con hechos autocontenidos (DOC_SELF_CONTAINED).
+"""Ingesta de DOCUMENTOS con hechos autocontenidos (DOC_SELF_CONTAINED).
 
 Problema medido en el parche 27 (cartucho «santander»): al trocear un artículo en hechos atómicos, algunos hechos
 pierden su contexto («El crucero Canarias arribó al puerto…» sin decir qué noche ni tras qué suceso; «Se procedió a

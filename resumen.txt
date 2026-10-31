@@ -1,185 +1,243 @@
 ================================================================================
- RESUMEN DE TRASPASO · memoria-unificada · v0.3.0a3
- Sesiones del 28/10/2026 (19:14) al 29/10/2026 (17:35), Europe/Madrid · parches 10 a 18
- Escrito por Claude para Claude: léelo entero antes de proponer nada.
+ RESUMEN DE TRASPASO · memoria-unificada · v0.3.0a5 (consolidación del 01/11/2026)
+ Cubre los parches 1 a 32 (28/10/2026 → 01/11/2026, Europe/Madrid).
+ Escrito por Claude para Claude: léelo ENTERO antes de proponer nada.
 ================================================================================
 
 0. CÓMO RETOMAR
 --------------------------------------------------------------------------------
-Adjuntos de la conversación nueva:
+Adjunta en la conversación nueva:
   1. este resumen.txt
-  2. proyecto_completo.txt (python3 scripts/estructura.py; excluye .env, body/, resultados, backups, caché)
-  3. parche16.py: plantilla del motor para un EXPERIMENTO PAREADO en LoCoMo (el tipo de parche que toca ahora).
-  4. Opcional: experiment/locomo_cache/resultados_*.jsonl más reciente (≈ 5 MB, solo datos de LoCoMo). Hace falta
-     para AUDITAR a mano (contexto completo de cada pregunta) y analizar fallos antes de diseñar el experimento.
-Primer mensaje sugerido: "Te paso resumen.txt, proyecto_completo.txt y parche16.py. Retomamos memoria-unificada en
-v0.3.0a3. Siguiente paso: multi-salto (descomponer la pregunta)."
+  2. proyecto_completo.txt  →  python3 scripts/estructura.py  (excluye .env, body/, cachés y resultados)
+  3. Si el siguiente paso es un experimento de LoCoMo: el resultados_*.jsonl de experiment/locomo_cache/ (la base
+     reproducible; ≈ 5 MB) para auditar a mano las respuestas.
+Primer mensaje sugerido: «Te paso resumen.txt y proyecto_completo.txt. Retomamos memoria-unificada en v0.3.0a5.»
 
 Para el Claude futuro:
-  - Habla en español. README, CHANGELOG y nombres del repo en inglés.
-  - El usuario trabaja "parche tras parche": cada mejora es un parcheN.py que, en la raíz y con el venv, aplica,
-    prueba, mide y termina con "📋 RESUMEN PARA CLAUDE". Lo guarda siempre como parche.py (ignorado por git).
-  - Delega ("haz lo que creas conveniente"): decide tú, con datos, y FIJA LA REGLA DE DECISIÓN ANTES DE MEDIR.
-    Valora la transparencia cuando te equivocas. Después de cada versión hace commit + tag.
-  - Trabaja SIEMPRE sobre el volcado nuevo: el motor exige coincidencia exacta de bloques.
-  - El usuario también consulta a otro asistente (Gemini), que a veces propone arquitecturas con datos inexactos;
-    hay un objetivos_nextlevel.txt versionado en la raíz (lo añadió el usuario; léelo en el volcado). Responde con
-    lo medido (sección 8).
+  - Habla en ESPAÑOL. README, CHANGELOG, LEDGER, nombres y mensajes de commit en INGLÉS.
+  - El usuario (Marcos) trabaja «parche tras parche»: cada cambio es un parcheN.py que guarda como parche.py en la
+    raíz del proyecto, ejecuta con el venv (python3 parche.py), y te devuelve el «📋 RESUMEN PARA CLAUDE».
+    Después hace commit + tag. Cada ejecución le cuesta mucho tiempo: AGRUPA en un parche los experimentos
+    independientes (una noche = varias fases), pero UNA variable por experimento.
+  - Delega las decisiones («haz lo que creas conveniente»). Decide con datos y FIJA LA REGLA DE DECISIÓN ANTES DE
+    MEDIR, en la cabecera del parche. Valora la honestidad: si te equivocaste, dilo (P32: la hipótesis de los
+    embeddings era falsa y se dijo).
+  - Quiere avanzar de verdad, no «iterar por iterar»: cada parche debe mover uno de los 4 objetivos (§2) o ser un
+    diagnóstico declarado que decide si un experimento merece la pena.
+  - body/ = DATOS REALES del usuario: NUNCA tocar. Nunca .env ni *.db en commits. Los parches NUNCA editan .env
+    (solo imprimen la línea que hay que añadir).
+  - Las órdenes del SERVIDOR (llama-server, nvidia-smi, pkill) no se escriben en el Mac: o van con «ssh …» delante
+    o las ejecuta el proyecto (scripts/modelos.py). El usuario ya tropezó con eso (exit 127).
+  - Consulta a veces a otro asistente que propone arquitecturas grandiosas con datos inexactos
+    (objetivos_nextlevel.txt). Responde con lo MEDIDO (§8).
 
 
 1. QUÉ ES
 --------------------------------------------------------------------------------
-Memoria jerárquica "infinita" a largo plazo para LLM locales.
+Memoria jerárquica «infinita» a largo plazo para LLM locales, con consola web (http://127.0.0.1:8765).
 Ruta: /Users/mlalejandre/Desktop/cerebro/memorias/memoria-unificada (MacBook Pro, .venv, Python 3.14).
-Servidores llama-server en 192.168.1.200: LTM :8087 · STM :8088 · embeddings bge-m3 :8089 (1.024 dim).
-Reranker cross :8090 NO levantado. LLM nail-35b (responde y juzga).
-Piezas: src/agente.py (BASE_PROMPT, _build_system) · src/ltm/retrieval.py (recall; modo directo inyecta top-K) ·
-src/ltm/storage.py (store) · src/ltm/ingestion.py (extract_facts) · src/vectores.py (numpy, caché incremental) ·
-src/episodica.py (turnos literales) · src/config.py · benchmarks/prueba.py (21 suites) · benchmarks/locomo.py ·
-tests/ (70 tests) · body/ = DATOS REALES del usuario: NUNCA tocar.
+Dos memorias consultadas en paralelo en cada mensaje:
+  · Corto plazo (STM): la conversación actual, BM25 local, auto-resumen jerárquico.
+  · Largo plazo (LTM): SQLite + FTS5 por cartucho (body/cartuchos/<id>/memoria.db): árbol de profundidad
+    adaptativa de nodos + «células» (hechos atómicos con fuente) + memoria episódica (turnos literales) +
+    vectores bge-m3. Un «ciclo de sueño» (9 tareas: repair, embed, decay, describe, dedupe, selftest, reevaluate,
+    split, merge) la mantiene cuando el agente está ocioso. El olvido es reversible (archivar, no borrar).
+Recuperación por defecto: coseno sobre bge-m3 (RETRIEVAL_PROFILE=embeddings), top-10 hechos (LTM_DIRECT_TOP_K)
+  + 20 episodios en el prompt (EPI_PROMPT_K, de 22 buscados). Cartuchos: varias memorias montadas a la vez (RRF).
+Prompt: regla de ATRIBUCIÓN (comprobar que el dato es de la persona preguntada; si es de otra, decirlo), fechas
+  relativas desde la fecha del recuerdo, «en un episodio, lo dicho en primera persona es de quien habla».
+
+Piezas: src/agente.py (BASE_PROMPT, _build_system, chat_stream, ingest_stream) · src/ltm/retrieval.py (recall) ·
+  src/ltm/storage.py (store) · src/ltm/ingestion.py (extract_facts) · src/episodica.py · src/vectores.py ·
+  src/corto_plazo.py · src/cartuchos.py · src/pensar.py (pensamiento off/auto/on) · src/documentos.py (hechos
+  autocontenidos, apagado) · src/modelos.py (modelos y GPU de cada servidor) · src/servidor.py (arranque por SSH) ·
+  src/llm.py · src/config.py · interfaz/ (consola) · benchmarks/prueba.py (21 suites) · benchmarks/locomo.py ·
+  benchmarks/cartucho.py (examen de documentos) · scripts/modelos.py · tests/ (137 tests).
 
 
-2. EL OBJETIVO
+2. EL OBJETIVO (los 4 ejes: preciso, fiable, rápido, infinito)
 --------------------------------------------------------------------------------
-"El agente responde bien lo que está en su memoria, no inventa lo que no está, en tiempo acotado, y esto se
- mantiene al crecer la memoria."  NORTH_STAR: correctas ≥ 95 % · inventa ≤ 5 % · P95 recuperación ≤ 1500 ms.
-Extremo a extremo (agente real + juez LLM por mayoría + Wilson) en DOS exámenes:
-  · corpus propio sintético (suite escala: 112 positivas, 40 del usuario, 31 negativas personales)
+«El agente responde bien lo que está en su memoria, no inventa lo que no está, en tiempo acotado, y esto se
+ mantiene al crecer la memoria.»  Metas: correctas ≥ 95 % · inventa ≤ 5 % · P95 de recuperación ≤ 1,5 s.
+Se mide EXTREMO A EXTREMO (agente real + juez LLM + intervalos de Wilson) en TRES exámenes:
+  · corpus propio sintético (suite escala: 112 preguntas, 40 del usuario, 31 trampas personales), hasta 100k hechos
   · LoCoMo, público y ajeno (suite locomo: 1.540 con respuesta + 446 adversariales, 10 conversaciones)
+  · documentos cargados por el usuario (benchmarks/cartucho.py + experiment/preguntas_santander.json: 83 preguntas
+    escritas a mano sobre dos artículos de Wikipedia, con 15 trampas)
 
 
-3. ESTADO · v0.3.0a3 (commit + tag hechos)
+3. INFRAESTRUCTURA (servidor de casa)
 --------------------------------------------------------------------------------
-Configuración por defecto: RETRIEVAL_PROFILE=embeddings · RERANK_MODE=off · LTM_DIRECT_TOP_K=10 ·
-EPI_PROMPT_K=20 · EPI_LOOKUP_K=22 (si EPI_LOOKUP_K < EPI_PROMPT_K se sube a +2 con aviso) · numpy.
-Prompt: regla de ATRIBUCIÓN (comprobar que el dato es de la persona/cosa preguntada; si es de otra, decirlo y
-corregir la premisa), fechas relativas desde la fecha del recuerdo, "en un episodio, lo dicho en primera persona
-es de quien habla".
-
-LOCOMO (parche 16; baseline experiment/baseline_locomo_v0.3.0a3.json):
-  correctas 70,2 % [67,9–72,4] · un salto 80,3 · temporal 68,8 · inferencia 53,1 · multi-salto 47,5 %
-  inventa 5,8 % [4,0–8,4] (26/446; ≥ 5 parecen etiquetas erróneas de LoCoMo y ≥ 1 error del juez: sin auditar)
-  evidencia en el prompt 87,4 % · prompt de sistema ≈ 7,2k caracteres (≈ 1.800 tokens) · sin memoria 3,3 %
-  tiempo de respuesta del agente: mediana 1,72 s / P95 2,38 s (con 5 episodios: 1,44 / 2,46)
-  Publicado (Mem0, arXiv 2504.19413, GPT-4o-mini, otro juez; NO comparable 1:1): full-context 72,9 · Mem0 66,9 ·
-  Zep 66,0 · RAG 61,0 · LangMem 58,1.  → El objetivo NO se cumple en LoCoMo.
-
-CORPUS PROPIO (parche 14, K=10; baseline experiment/baseline_v0.3.0a2.json; los episodios no le afectan porque
-sus pruebas llaman a _build_system con epi=None):
-  108 hechos: 100 % / usuario 100 % / inventa 0/31 · 100.108 hechos: 99,1 % / 97,5 % / 1/31 (3,2 %)
-  P95 305 ms (108) → 357 ms (100.108) · +0,5 ms por 1.000 hechos.
-  ⚠ Esas latencias llevan ≈ +200 ms fijos por un cambio de red del usuario ese día (el parche 13 midió 110 ms a
-  108 hechos con la misma configuración). Al comparar latencias, comprobar que la red es la misma. El README
-  quedó con 305/357 ms: refrescar en un parche que ya mida la escala.
-
-Historia de LoCoMo: 59,0 % / inventa 12,8 % (P11) → atribución 59,7 / 6,3 (P12) → K=10 61,9 / 7,0 (P13) →
-20 episodios 70,2 / 5,8 (P16).
+Servidor 192.168.1.200 (usuario mlalejandre, SSH SIN contraseña desde el Mac: necesario para scripts/modelos.py).
+  GPU 0 RTX 4090 (compute 8.9) · GPU 1 RTX 3090 (8.6) · GPU 2 RTX 2060 6 GB (7.5). Índices = nvidia-smi
+  (los arranques usan CUDA_DEVICE_ORDER=PCI_BUS_ID).
+  :8087 LTM (memoria larga: ingesta, sueño y JUEZ del banco) en la 4090 · :8088 STM (el agente responde, 2 slots,
+  ctx 81920) en la 3090 · :8089 embeddings bge-m3 Q8 (1.024 dim) en la 3090 · :8090 reranker (no levantado).
+  llama.cpp propio: /home/mlalejandre/llama.cpp-qwen38-opt/build/bin/llama-server, compilado SOLO para 86;89.
+  Para la 2060 hay otra compilación: …/build-sm75/bin/llama-server (P32; para usarla: GPU_SERVER_BINS=2=<ruta>).
+  Alias de todos los servidores de chat: «nail-35b» (el agente no se entera de qué modelo hay detrás).
+Modelos en /mnt/IA/models: nail-35b (Nail-Qwen3.6-35B-A3B-UD-Q4_K_S, MoE ≈3B activos, 20,9 GB) = el de siempre ·
+  Qwen3.8-27B-GSQ-RCO-IQ3_S (denso, 11,8 GB) y su variante -mtp (12,1 GB) · Devstral 24B · Mistral-Small 24B ·
+  Qwen3.8-Flash-Next Q4 (111 GB, no cabe en una GPU) · embeddings/bge-m3-Q8_0.
+Panel «🧩 Modelos y GPUs» de la consola (o python3 scripts/modelos.py): elige modelo, GPU y contexto de cada
+  servidor; relanza con LA MISMA línea de órdenes y vuelve solo a la anterior si falla. La elección se guarda en
+  body/servidores.json y pisa al .env.
+ESTADO AL CERRAR (01/11 00:30): el usuario había puesto Qwen3.8-mtp en STM y LTM desde la consola. Con los datos
+  de P32 se le recomendó volver a nail-35b en ambos (mismo acierto, 4-5× más rápido; el LTM es el juez de la
+  base). Comprueba qué eligió: python3 scripts/modelos.py. Para comparar con la base, el JUEZ debe ser nail-35b.
 
 
-4. HISTORIA (P1-P9 → v0.3.0a1; P10-P14 → v0.3.0a2; P15-P18 → v0.3.0a3)
+4. ESTADO MEDIDO · v0.3.0a5 (= v0.3.0a4 en comportamiento; ningún valor por defecto cambió desde a4)
 --------------------------------------------------------------------------------
-P1-P9: banda tentativa; solo embeddings > fusión (2,7× más rápido); reranker llm no mueve el objetivo (off);
-  juez verificable; regla anti-deducción; escala a 100k con numpy y caché incremental.
-P10 · Suite LoCoMo: descarga + sha256 (79fa87e9…), ingesta REAL por bloques de 6 turnos (episodios + extract_facts
-  + store()), reanudable y en caché (experiment/locomo_cache/, se invalida si cambian ingesta/modelos/bloque).
-  Ingesta ≈ 125 hechos/min, 0,3 llamadas LLM por hecho, árbol aplanado (3-13 nodos), 16 sustituciones dudosas.
-P11 · Diagnóstico de identidad: hipótesis H1 REFUTADA (el "el usuario" casi siempre lleva el nombre).
-  Auditoría a mano: 52/57 invenciones = atribuir a una persona lo que dijo la otra; 42/57 salen de episodios.
-P12 · Regla de atribución + fechas relativas: inventa 12,8 → 6,3 % (p < 0,001), correctas sin cambio.
-P13 · LTM_DIRECT_TOP_K=10: correctas 59,7 → 61,9 % (p = 0,003); el multi-salto NO se movió.
-P14 · Consolidación v0.3.0a2 (re-medición a 100k, README, baseline).
-P15 · Diagnóstico de profundidad (HMEM_LOCOMO_PROFUNDIDAD=1, HMEM_LOCOMO_SOLO_RECUPERACION=1; sin LLM):
-  cobertura COMPLETA del multi-salto 19,1 % (K10+E5) → 29,4 % con 20 episodios; la mitad de su evidencia está
-  más allá del puesto 50 para una sola consulta; ni K50+E50 pasa de 56 %.
-P16 · Hallazgo: agente._build_system cortaba los episodios a 5 con un [:5] fijo (subir EPI_LOOKUP_K no hacía
-  nada) → EPI_PROMPT_K. Experimento 20 episodios: correctas 61,9 → 70,2 % (175 mejoran / 47 empeoran, p < 0,001),
-  multi-salto 35,5 → 47,5 %, inventa 7,0 → 5,8 % (p = 0,46). Adoptado.
-P17 · Consolidación v0.3.0a3: 20/22 por defecto, tiempo de respuesta medido (+0,28 s de mediana), solo las
-  ejecuciones COMPLETAS se guardan como resultados_*.jsonl (base de comparación); las parciales, parcial_*.jsonl.
-P18 · Corrección: el .env del usuario tenía EPI_LOOKUP_K=6 y limitaba en silencio el prompt a 6 episodios (lo
-  cazó un test). Ahora EPI_LOOKUP_K nunca queda por debajo de EPI_PROMPT_K.
-Limpieza (limpieza.py): historial de parches, resultados y .jsonl antiguos archivados fuera del repo en
-  ../memoria-unificada_historial_v0.3.0a3_<fecha>.tar.gz; se conserva la caché de LoCoMo y la última base.
+Config por defecto: RETRIEVAL_PROFILE=embeddings · RERANK_MODE=off · LTM_DIRECT_TOP_K=10 · EPI_PROMPT_K=20 ·
+  EPI_LOOKUP_K=22 · AGENT_THINK=off · ANSWER_DIRECT=0 · LTM_DECOMPOSE=0 · LTM_SECOND_PASS=0 · EPI_DIVERSITY=off ·
+  DOC_SELF_CONTAINED=0 · ATTRIB_EVENTS=0 · numpy instalado.
+LoCoMo (base reproducible de P24, experiment/locomo_cache/resultados_20261030_210313.jsonl; agente nail-35b, juez
+  nail-35b, T=0, 1 respuesta a la vez, sin caché de prompt, 1 voto):
+  correctas 69,6 % · un salto 80,6 · temporal 68,2 · multi-salto 47,9 · inferencia 41,7 % · inventa 6,1 %
+  ruido con nada cambiado: 0/99 veredictos · respuesta 1,8 s mediana · LoCoMo completo ≈ 53 min (≈ 5 min si
+  nada cambia: caché en banco.sqlite). Publicado (Mem0, otro modelo y juez, NO 1:1): full-context 72,9 ·
+  Mem0 66,9 · Zep 66,0 · RAG 61,0.
+  ~¼ de los fallos auditados son etiquetas erróneas de LoCoMo y ~¼ juez demasiado estricto: el 95 % «bruto» no es
+  alcanzable en LoCoMo; úsalo para comparar, no como meta literal.
+Corpus propio (v0.3.0a4, 100.108 hechos): 99,1 % · usuario 100 % · inventa 1/31 · P95 446 ms.
+Documento (cartucho de prueba, P28-P32): 85-88 % correctas, 2/15 trampas inventadas, mediana 1,2 s.
+Latencia de embeddings: ≈ 330 ms por consulta de un texto corto, IGUAL en las tres GPU y con o sin carga (P32):
+  NO es la GPU. Debería ser de pocos ms: sospecha de red o de la forma de llamar (sin medir aún). Es casi toda la
+  latencia de recuperación (P95 ≈ 480 ms).
 
 
-5. LECCIONES DE MÉTODO (no las repitas)
+5. HISTORIA COMPLETA (qué se probó, qué funcionó, qué no)
+--------------------------------------------------------------------------------
+v0.3.0a1 (P1-P9): banda tentativa; solo embeddings > fusión de canales (2,7× más rápido, mismo acierto);
+  reranker llm no mueve el objetivo (off); juez verificable; regla anti-deducción; escala a 100k con numpy y caché
+  incremental de vectores.
+v0.3.0a2 (P10-P14):
+  P10 suite LoCoMo (ingesta REAL por bloques de 6 turnos, en caché, sha256 verificado).
+  P11 diagnóstico: «el usuario» anónimo NO causa la invención (refutado); 52/57 invenciones = atribuir a una
+      persona lo que dijo la otra.
+  P12 regla de atribución: inventa 12,8 → 6,3 % (p < 0,001). ADOPTADA.
+  P13 10 hechos en vez de 6: correctas 59,7 → 61,9 % (p = 0,003). ADOPTADA.
+v0.3.0a3 (P15-P18):
+  P15 diagnóstico de profundidad (sin LLM): la evidencia multi-salto está muy abajo en el ranking.
+  P16 20 episodios en vez de 5 (había un [:5] fijo oculto): correctas 61,9 → 70,2 % (p < 0,001). ADOPTADA. El
+      mayor salto del proyecto salió de un diagnóstico barato + leer el código.
+  P18 un .env viejo limitaba los episodios en silencio: corregido (imprimir siempre la config EFECTIVA).
+v0.3.0a4 (P19-P25):
+  P19 descomponer la pregunta (multi-salto): solo el 9 % se descompone, cobertura sin cambio → NO-GO.
+  P20 diversidad de episodios por día / 2.ª pasada: +3,9-4,6 pp de cobertura (regla ≥ 5) → NO-GO.
+  Auditoría: de los fallos con la evidencia en el prompt, etiquetas erróneas ~25-30 %, juez estricto ~20-28 %,
+      anclaje temporal 33 % de los temporales.
+  P21 fechas absolutas en la ingesta: temporal +1,6 (p = 0,61), inventa +2,3 → RECHAZADO y revertido.
+  A/A: sin cambiar nada, 111/1.540 veredictos cambiaban (7,2 %) → el banco no distinguía efectos de 1-3 pp.
+  P22 banco determinista (T=0, juez 1 voto con servidor ocioso, caché): ruido 7,2 → 2,7 %. ADOPTADO.
+      ANSWER_DIRECT (respuesta directa): 69,5 → 69,6 %, inventa +1,3 → RECHAZADO.
+  P23 1 respuesta a la vez y sin caché de prompt: 100 % reproducible y más rápido (1,80 s vs 3,07 s). ADOPTADO.
+      Pensamiento siempre: +3,5 pp (p = 0,08), 5× más lento → opción de usuario, no por defecto.
+  P24 base reproducible 69,6 % / 6,1 %; re-ejecutar sin caché cambia 0/99. AGENT_THINK=auto (piensa en fechas,
+      recuentos, comparaciones): 69,6 → 69,9 % (p = 0,57) → opción off/auto/on en la consola, no por defecto.
+  P25 consolidación v0.3.0a4: suite emulada completa, LoCoMo reproducido 0/1.986 cambios, corpus a 100k.
+Entre a4 y a5 (P26-P32):
+  P26 auto sin duraciones 70,1 % (p = 0,29); 15 hechos en vez de 10: 70,3 % (p = 0,32), inventa 7,0 → RECHAZADOS.
+  P27 examen de documento (cartucho «santander»): sin memoria 2,9 %, con memoria 77,9 %; el pensamiento no ayuda.
+      Hallazgo: TODOS los hechos llevaban la fuente del primer artículo (la consola arrastraba la fuente).
+  P28 una fuente por documento: 77,9 → 85,3 / 88,2 % (dos ingestas idénticas ya difieren en 9 preguntas).
+      Hechos autocontenidos (DOC_SELF_CONTAINED): 86,8 % (3/2) → no adoptado. La FUENTE fue lo que importó.
+  P29 la consola exige una fuente por documento (ADOPTADO). ATTRIB_EVENTS (regla de atribución a sucesos):
+      85,3 → 82,4 % (0/2) → RECHAZADO.
+  P30-P31 REMOTE_MODEL_PATH_STM y panel «Modelos y GPUs» con vuelta atrás automática (ADOPTADO, funciona en el
+      servidor real).
+  P32 la 2060 no arrancaba: tu llama.cpp solo trae 86;89 → comprobación de compatibilidad, GPU_SERVER_BINS y
+      compilación sm_75 (3,6 min). Fase E: embeddings ≈ 330 ms en cualquier GPU → quedarse en la 3090.
+      Qwen3.8-27B-mtp respondiendo (juez nail-35b): LoCoMo 68,9 → 68,6 % (16/17, p = 1,0), inventa 6,8 → 3,4 %
+      (4/1, p = 0,38), 8,4 s por respuesta (vs ≈ 1,8 s); documento 86,8 → 85,3 %, mismas trampas, 5,0 s vs 1,2 s
+      → NO RECOMENDADO.
+Tabla con todas las cifras: experiment/LEDGER.md (manténla al día en cada parche).
+
+
+6. LECCIONES DE MÉTODO (no las repitas)
 --------------------------------------------------------------------------------
 - Mide el OBJETIVO extremo a extremo; las métricas intermedias engañan.
-- Antes de cambiar nada, AUDITA A MANO los fallos con el material original (el turno de LoCoMo, no solo la
-  respuesta). Así salió la atribución (P12). El juez y las etiquetas de LoCoMo también fallan.
-- Diagnóstico barato antes del experimento caro: P15 (15 min, sin LLM) eligió el experimento que más ha movido el
-  objetivo (P16).
-- COMPARACIÓN PAREADA contra el último resultados_*.jsonl completo (misma pregunta, test de signos exacto), una
-  sola variable por experimento, regla de decisión escrita en la cabecera del parche ANTES de medir.
-- Verifica hasta dónde llega de verdad un ajuste: un tope fijo en otro sitio ([:5]) o un .env antiguo pueden
-  anularlo en silencio. Imprime los valores EFECTIVOS en el resumen.
-- Tus hipótesis también se refutan (H1). No parchees casos individuales; los cambios de prompt deben ser generales.
-- Emulado valida fontanería; solo --live decide. Un servidor OpenAI-compatible FALSO (respuestas aleatorias,
-  embeddings por n-gramas) permite probar toda la rama --live de un parche antes de entregarlo.
-Trampas del motor:
-- str.replace() que no encuentra el texto no falla: usa reemplazos que exijan exactamente 1 coincidencia.
-- Nada de comillas triples en código embebido (el constructor serializa con repr()).
-- LoCoMo repite preguntas (emparejar por conversación, pregunta, categoría y n.º de aparición) y ordena por
-  categoría (submuestras estratificadas).
-- Las variables del proceso mandan sobre .env (config._load_dotenv no pisa lo definido): los parches pueden fijar
-  la configuración del experimento por entorno con seguridad.
+- Antes de cambiar nada, AUDITA A MANO los fallos con el material original. Así salió la atribución (P12).
+- Diagnóstico barato (10-15 min, sin LLM de respuesta) antes del experimento caro (2 h): P15 → P16; P19/P20 se
+  cerraron sin gastar noches.
+- Primero un banco DETERMINISTA: con 7 % de ruido, efectos de 1-3 pp son invisibles (P22-P24).
+- Comparación PAREADA contra la base reproducible (misma pregunta, test de signos exacto), una variable, regla
+  escrita antes. Un subgrupo que pasa (temporal p = 0,029) es la hipótesis del SIGUIENTE experimento, no una
+  victoria.
+- Registra la huella del servidor (modelo + compilación) con cada resultado; el JUEZ debe ser siempre el mismo.
+- Verifica hasta dónde llega un ajuste: un [:5] fijo o un .env antiguo lo anulaban en silencio.
+- Cómo se cargan los datos importa más que el algoritmo: una fuente compartida costó ~8 puntos (P27-P28).
+- Correlación no es causa: las respuestas fallidas eran largas, pero acortarlas no cambió cuántas acertaban (P22).
+- Tus hipótesis también fallan: H1 (P11), la GPU de los embeddings (P32). Mídelo antes de recetar.
+- Consolida tras una racha de experimentos: la suite completa cazó un stub roto que LoCoMo solo no veía (P25).
+Trampas técnicas:
+- pkill -f mata tu propio shell si el patrón aparece en tu línea de órdenes: usa pids o el truco «[l]lama».
+- Las variables del proceso mandan sobre .env (config._load_dotenv no pisa lo definido).
+- La caché de ingesta de LoCoMo se invalida si cambian src/ltm/ingestion.py, storage.py, common.py o
+  src/episodica.py (reingestar ≈ 40 min): no los toques en un experimento de respuesta.
+- LoCoMo repite preguntas: emparejar por (conversación, pregunta, categoría, n.º de aparición).
+- Fallo emulado conocido, NO es regresión: temporal «la consulta en presente devuelve el estado vigente» 3/6.
 
 
-6. FORMATO DE LOS PARCHES
+7. CÓMO SE CONSTRUYE UN PARCHE (herramientas en scripts/)
 --------------------------------------------------------------------------------
-Motor (ver parche16.py): PATCH_ID · MARK · REQUIRES [(archivo, marcador, id)] · EDITS [(archivo, viejo, nuevo,
-desc)] con coincidencia EXACTA de 1 bloque (líneas tras rstrip), todo o nada · NEW_FILES · APPENDS ·
-REPLACE_FILES {ruta: (sha256 esperado, contenido)} · copia en .parche_backup/<id>/ + manifest.json ·
-py_compile y reversión automática · --solo-eval / --emulado / --revertir · log en resultados_parches/ ·
-"📋 RESUMEN PARA CLAUDE" con ANTES → AHORA, criterios de aceptación y REGLA DE DECISIÓN.
-Cómo construirlos: reconstruir el proyecto del volcado en un repo git; hacer el cambio a mano; generar los EDITS
-desde el diff (HEAD → árbol) con contexto mínimo único y VERIFICAR que aplicados en orden reproducen el árbol byte
-a byte; probar el parche en una copia limpia del estado del usuario (tests + emulado + rama --live contra el
-servidor falso + idempotencia + --revertir).
-Benchmark: python3 benchmarks/prueba.py [--live] [--only s1,s2] [--json ruta]
-  escala: HMEM_ESCALA="10000,100000" · HMEM_ESCALA_E2E="0,max"
-  locomo: HMEM_LOCOMO_CONV ("0,1" | "all") · HMEM_LOCOMO_BASE=<jsonl> · HMEM_LOCOMO_MAXQ · HMEM_LOCOMO_REF ·
-          HMEM_LOCOMO_REINGEST · HMEM_LOCOMO_PROFUNDIDAD · HMEM_LOCOMO_SOLO_RECUPERACION · HMEM_E2E_WORKERS=2
-  Tiempos: LoCoMo completo (memoria en caché) ≈ 1 h · diagnóstico sin LLM ≈ 15 min · escala a 100k ≈ 40-60 min.
-  Fallo emulado conocido (no es regresión): temporal "consulta en presente" 3/6.
+scripts/plantilla_parche.py = el motor (léelo): PATCH_ID · REQUIRES [(archivo, texto que debe existir, qué)] ·
+  EDITS [(archivo, bloque viejo EXACTO y único, bloque nuevo, desc)] todo o nada · NEW_FILES · copia en
+  .parche_backup/<id>/ + manifest · py_compile y reversión automática · --solo-eval / --emulado / --revertir ·
+  log en resultados_parches/ · termina con «📋 RESUMEN PARA CLAUDE» (config EFECTIVA, ANTES → AHORA, REGLA,
+  DECISIÓN). Sustituye __EDITS__ / __NEW_FILES__ y escribe las FASES al final.
+Flujo: reconstruye el repo del volcado en git → haz el cambio → scripts/generar_edits.py <repo> edits.json
+  (genera EDITS mínimos desde «git diff --cached» y verifica que reproducen el árbol byte a byte) → monta el
+  parche → pruébalo en una copia limpia del estado del usuario: tests + emulado + rama --live contra
+  scripts/servidor_falso.py (OpenAI-compatible, respuestas aleatorias, /props, embeddings por n-gramas) +
+  --revertir. El código ya no lleva marcadores [PARCHEnn] (se quitaron en a5): para «applied()» y REQUIRES usa
+  algo que el parche añade o necesita de verdad (una función, una variable).
+Banco: python3 benchmarks/prueba.py [--live] [--only s1,s2] [--json ruta]
+  locomo: HMEM_LOCOMO_CONV=all · HMEM_LOCOMO_BASE=<jsonl> · HMEM_LOCOMO_MAXQ=40 (≈ 400 preguntas, 45-60 min) ·
+          HMEM_ANSWER_WORKERS=1 HMEM_ANSWER_CACHE_PROMPT=0 (reproducible) · HMEM_ANSWER_THINK=off|auto|on
+  documento: python3 benchmarks/cartucho.py --textos "experiment/textos/cabo_machichaco.txt=Wikipedia: Cabo
+          Machichaco (vapor);experiment/textos/incendio_santander_1941.txt=Wikipedia: Incendio de Santander de
+          1941" --preguntas experiment/preguntas_santander.json --modos no,ref (ref = responde el servidor LTM)
+  servidores: python3 scripts/modelos.py [stm|ltm|emb <modelo> --gpu N --ctx N --no-guardar] · --latencia-emb ·
+          --compilar-gpu N
 
 
-7. LIMITACIONES CONOCIDAS
+8. HACIA LA MEMORIA INFINITA: DÓNDE ESTAMOS Y QUÉ SIGUE
 --------------------------------------------------------------------------------
-- LoCoMo 70,2 % (meta 95 %): multi-salto 47,5 % e inferencia 53,1 % son lo más flojo; 306 fallos tienen la
-  evidencia en el prompt y aun así fallan ("respuesta"), 126 no la recuperan.
-- Invención por atribución 5,8 % (meta 5 %), sobre todo desde episodios. La compuerta no separa nada en datos
-  conversacionales (similitud 0,72 frente a 0,67).
-- Ingesta de conversaciones entre dos personas: árbol aplanado y sustituciones temporales dudosas (sin auditar).
-- Escala: inserción en bloque hasta 100k; store() real solo con ≈ 500 hechos por memoria. RAM a 1M ≈ 4 GB (float32).
-- Juez = mismo LLM. Sin validar con la memoria real del usuario. Latencia del README medida con red lenta.
-- body/largo_plazo/memoria.db (740 KB) parece la memoria anterior a los cartuchos: sin verificar.
+Diagnóstico de fondo (P26-P32): dos modelos muy distintos (MoE 3B activos y denso 27B) dan el MISMO 69 % en
+  LoCoMo, y los ajustes de prompt/cómputo solo barajan qué preguntas aciertan. El cuello de botella ya NO es el
+  modelo: es QUÉ llega al prompt y CÓMO. En P32, de 97 fallos con evidencia, 70 tenían el dato en el prompt
+  (≈ 7.000 caracteres de contexto: el modelo responde «no hay registro» teniéndolo delante) y en 98 preguntas el
+  primer hecho con la respuesta estaba fuera de los 18 candidatos.
+Siguientes pasos propuestos (en orden):
+  1) Latencia de embeddings (barato, 1 fase): medir dónde se van los 330 ms (tiempo del servidor frente al del
+     cliente, conexión persistente, llamada desde el propio servidor). Meta: < 50 ms. Mueve «rápido» e «infinito».
+  2) Prompt más corto y ordenado: menos episodios/caracteres y los hechos que responden ARRIBA (p. ej. reordenar
+     por similitud y agrupar por persona). Experimento pareado en LoCoMo + documento. Hipótesis: menos «no hay
+     registro» con la evidencia delante.
+  3) Recuperación: el 25 % de fallos es de recuperación (el hecho existe pero no entra en el top-18). Probar
+     reranking cross-encoder de verdad (bge-reranker en :8090, nunca levantado) o búsqueda híbrida con
+     consulta reformulada, midiendo «evidencia en el prompt» antes que respuestas (diagnóstico barato).
+  4) Infinito de verdad: escala a 300k-1M midiendo RAM (≈ 4 GB a 1M en float32) y recall; solo si se rompe,
+     float16 / HNSW / poda por ramas, medidos contra la búsqueda plana exacta. Enrutador de cartuchos cuando haya
+     dominios realmente separados. Validar con la memoria REAL del usuario (copia temporal, fuera de git) y un
+     juez independiente; LongMemEval como segundo examen público.
+Posición sobre las propuestas de objetivos_nextlevel.txt (enrutador de cartuchos, poda O(log N), mitosis): la
+  poda solo puede igualar o EMPEORAR el recall de la búsqueda plana; el problema medido es la PRECISIÓN, no la
+  latencia (≈ 480 ms frente a 1,5 s, y casi todo son los 330 ms del embedding) ni el apiñamiento; el multi-salto
+  necesita juntar evidencia de sesiones distintas y particionar lo empeoraría. Entran como candidatas MEDIDAS en
+  el paso 4, no antes.
 
 
-8. SIGUIENTES PASOS Y DEBATE DE ARQUITECTURA
+9. LIMITACIONES CONOCIDAS
 --------------------------------------------------------------------------------
-1) Multi-salto: DESCOMPONER LA PREGUNTA en 2-3 consultas (una llamada LLM barata o reglas para listas: "¿qué X ha
-   hecho Y?") y unir los resultados. Antes: diagnóstico sin LLM que simule el techo (cobertura completa con
-   consultas reformuladas, p. ej. a partir de la respuesta de referencia como oráculo) para saber si merece la pena.
-   Luego experimento pareado con regla: correctas suben con p < 0,05 · inventa no sube · coste de tiempo medido.
-2) Auditar a mano las 26 invenciones de P16 (¿ya estamos ≤ 5 % real?) y una muestra de los 306 fallos de
-   "respuesta" (evidencia en el prompt).
-3) Escala medida: llevar escala a 300k-1M informando de RAM; solo si se rompe, comparar float16, HNSW y poda por
-   ramas por recall perdido (la plana es la referencia exacta) frente a RAM/latencia ganadas.
-4) Validación con la memoria real del usuario (copia temporal de body/cartuchos, preguntas revisadas a mano,
-   fuera de git) · juez independiente · LongMemEval.
-5) Menores: refrescar latencias del README con la red habitual; auditar sustituciones temporales de LoCoMo.
-
-Debate de arquitectura (29/10). Gemini propuso enrutador dinámico de cartuchos + poda descendente por el árbol
-(O(log N)) + "mitosis" de cartuchos. Posición acordada con el usuario:
-  - La poda solo puede igualar o EMPEORAR el recall de la búsqueda plana exacta (busca en un subconjunto y los
-    errores de rama se acumulan). El problema medido es la PRECISIÓN, no la latencia (115-400 ms frente a 1.500)
-    ni el apiñamiento (Hit@1 82,1 → 81,2 % con 100k distractores parecidos).
-  - El multi-salto necesita juntar evidencia de sesiones distintas: particionar lo empeoraría.
-  - El árbol actual coloca mal (aplanado en LoCoMo): podar sobre él amplificaría errores.
-  - El límite real a escala es la RAM (≈ 4 GB a 1M): float16 o HNSW son las soluciones probadas; la poda por
-    ramas entra como candidata MEDIDA en el paso 3. Cartuchos con enrutador: cuando haya dominios realmente
-    separados (hoy 3 cartuchos, 8 MB).
-  - Parte del relato era inexacto: en P2 no se "desactivó el árbol porque el LLM tardaba 4 s"; se midió que la
-    fusión de canales (árbol incluido) no mejoraba y era 2,7× más lenta.
+- LoCoMo 69,6 % (meta 95 %; techo real menor por etiquetas): multi-salto 48 % e inferencia 42 % lo más flojo.
+- Invención 6,1 % en LoCoMo (meta 5 %), sobre todo desde episodios; la compuerta no separa (similitud 0,72 vs 0,68).
+- Ingesta de conversaciones entre dos personas: árbol aplanado, sustituciones temporales dudosas (sin auditar).
+- Escala: inserción en bloque hasta 100k; store() real solo con ≈ 500 hechos por memoria.
+- Juez = mismo LLM que el de la memoria larga. Sin validar con la memoria real del usuario.
+- Embeddings ≈ 330 ms por consulta (§4), sin explicar.
+- Historial anterior a v0.3.0a5 (logs de parches, copias, resultados viejos) archivado FUERA del repo en
+  ../memoria-unificada_historial_v0.3.0a5_<fecha>.tar.gz (y el de a3 en …_v0.3.0a3_…).
 ================================================================================

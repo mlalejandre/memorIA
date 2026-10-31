@@ -11,7 +11,7 @@ from socketserver import ThreadingMixIn
 
 import config as C
 
-try:   # [PARCHE31] selector de modelos y GPUs
+try:   # selector de modelos y GPUs
     import modelos
 except Exception:  # pragma: no cover - la consola funciona sin él
     modelos = None
@@ -144,10 +144,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
         elif path == "/api/status":
             st = agent.status()
-            if modelos is not None and isinstance(st, dict):   # [PARCHE31] nombre del modelo de cada servidor
+            if modelos is not None and isinstance(st, dict):   # nombre del modelo de cada servidor
                 st.setdefault("system_info", {}).update(modelos.cached())
             self._json(st)
-        elif path == "/api/servers":   # [PARCHE31] solo lectura: GPU, servidores y .gguf disponibles
+        elif path == "/api/servers":   # solo lectura: GPU, servidores y .gguf disponibles
             if modelos is None:
                 self._json({"error": "módulo modelos no disponible"})
             else:
@@ -214,7 +214,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         payload = self._read_json()
 
         if path == "/api/chat":
-            self._json(agent.chat(payload.get("text", ""), payload.get("think")))   # [PARCHE24]
+            self._json(agent.chat(payload.get("text", ""), payload.get("think")))
         elif path == "/api/chat/stream":
             self._sse(agent.chat_stream(str(payload.get("text", "")), payload.get("think")))
         elif path == "/api/compact":
@@ -284,7 +284,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             cid = payload.get("id")
             fn = getattr(agent, "reset_cartridge", None) or getattr(agent, "reset_active_cartridge", None)
             self._json(fn(cid) if (fn and cid) else fn() if fn else {"ok": False})
-        elif path == "/api/servers/switch":   # [PARCHE31] cambia modelo / GPU / contexto de un servidor
+        elif path == "/api/servers/switch":   # cambia modelo / GPU / contexto de un servidor
             if modelos is None:
                 self._json({"error": "módulo modelos no disponible"}, 400)
                 return

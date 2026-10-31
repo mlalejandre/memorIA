@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""rerank.py — Reordenación de candidatos y decisión de relevancia.  [PARCHE4]
+"""rerank.py — Reordenación de candidatos y decisión de relevancia.
 
 Modos (RERANK_MODE):
   * "llm":   juez LLM. El modelo de la memoria larga indica qué candidatos RESPONDEN de verdad a la pregunta

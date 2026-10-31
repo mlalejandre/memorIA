@@ -73,7 +73,7 @@ def _wait_for_server(port: int, gpu_idx: str, log_file: str) -> None:
 
 
 def llm_argv(port: int, ctx: int, slots: int, model_path: str | None = None) -> list[str]:
-    """[PARCHE31] Argumentos de llama-server para un servidor de chat (también los usa modelos.py)."""
+    """Argumentos de llama-server para un servidor de chat (también los usa modelos.py)."""
     host = "127.0.0.1" if _is_local() else "0.0.0.0"
     return [C.LLAMA_SERVER_BIN, "-m", model_path or C.REMOTE_MODEL_PATH, "--alias", C.REMOTE_MODEL_ALIAS,
             "--host", host, "--port", str(port), "-ngl", "all", "--split-mode", "none", "--flash-attn", "on",
@@ -84,7 +84,7 @@ def llm_argv(port: int, ctx: int, slots: int, model_path: str | None = None) -> 
 def _launch_cmd(gpu_idx: str, port: int, ctx: int, slots: int, pid_file: str, log_file: str,
                 model_path: str | None = None) -> str:
     q = shlex.quote
-    # [PARCHE30] CUDA_DEVICE_ORDER=PCI_BUS_ID: los índices de GPU coinciden con los de nvidia-smi
+    # CUDA_DEVICE_ORDER=PCI_BUS_ID: los índices de GPU coinciden con los de nvidia-smi
     return (
         f"CUDA_DEVICE_ORDER=PCI_BUS_ID CUDA_VISIBLE_DEVICES={q(gpu_idx)} nohup "
         f"{' '.join(q(a) for a in llm_argv(port, ctx, slots, model_path))} "
@@ -121,7 +121,7 @@ def start_gpu0() -> None:
     global _started_gpu0
     if _start("GPU 0 (Memoria Larga)", C.GPU0_INDEX, C.SERVER_PORT_GPU0, C.REMOTE_CTX_GPU0, 1,
               C.REMOTE_PID_GPU0, C.REMOTE_LOG_GPU0,
-              getattr(C, "REMOTE_MODEL_PATH_LTM", "") or None):   # [PARCHE31]
+              getattr(C, "REMOTE_MODEL_PATH_LTM", "") or None):
         _started_gpu0 = True
 
 
@@ -130,7 +130,7 @@ def start_gpu1() -> None:
     total_ctx = C.SLOT_CTX_GPU1 * C.PARALLEL_SLOTS_GPU1
     if _start("GPU 1 (Memoria Corta / Agente)", C.GPU1_INDEX, C.SERVER_PORT_GPU1, total_ctx,
               C.PARALLEL_SLOTS_GPU1, C.REMOTE_PID_GPU1, C.REMOTE_LOG_GPU1,
-              getattr(C, "REMOTE_MODEL_PATH_STM", "") or None):   # [PARCHE30]
+              getattr(C, "REMOTE_MODEL_PATH_STM", "") or None):
         _started_gpu1 = True
 
 
@@ -148,7 +148,7 @@ def _port_open(host: str, port: int) -> bool:
 
 
 def emb_argv() -> list[str]:
-    """[PARCHE31] Argumentos de llama-server para el servidor de embeddings."""
+    """Argumentos de llama-server para el servidor de embeddings."""
     host = "127.0.0.1" if _is_local() else "0.0.0.0"
     ctx = str(C.EMB_CTX)
     return [C.LLAMA_SERVER_BIN, "-m", C.EMB_MODEL_PATH, "--alias", C.EMB_MODEL_ALIAS, "--host", host,

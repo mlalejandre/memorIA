@@ -93,15 +93,15 @@ SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")
 LLAMA_SERVER_BIN = os.getenv("LLAMA_SERVER_BIN", "llama-server")
 LLAMA_SERVER_EXTRA = os.getenv("LLAMA_SERVER_EXTRA", "")
 REMOTE_MODEL_PATH = os.getenv("REMOTE_MODEL_PATH", "")
-# [PARCHE30] modelo propio para el servidor que RESPONDE (STM, GPU 1); vacío = el mismo que REMOTE_MODEL_PATH.
+# modelo propio para el servidor que RESPONDE (STM, GPU 1); vacío = el mismo que REMOTE_MODEL_PATH.
 # La memoria larga (ingesta y juez del banco) sigue con REMOTE_MODEL_PATH.
 REMOTE_MODEL_PATH_STM = os.getenv("REMOTE_MODEL_PATH_STM", "").strip()
-# [PARCHE31] ídem para la memoria larga (GPU 0); vacío = REMOTE_MODEL_PATH. REMOTE_MODELS_DIR: carpetas del
+# ídem para la memoria larga (GPU 0); vacío = REMOTE_MODEL_PATH. REMOTE_MODELS_DIR: carpetas del
 # servidor donde buscar .gguf para el selector de modelos (separadas por comas; vacío = la carpeta madre de los
 # modelos que ya conoces, p. ej. /mnt/IA/models para /mnt/IA/models/nail-35b/x.gguf).
 REMOTE_MODEL_PATH_LTM = os.getenv("REMOTE_MODEL_PATH_LTM", "").strip()
 REMOTE_MODELS_DIR = os.getenv("REMOTE_MODELS_DIR", "").strip()
-# [PARCHE32] llama-server propio para alguna GPU: tu compilación solo trae las arquitecturas CUDA que le pediste
+# llama-server propio para alguna GPU: tu compilación solo trae las arquitecturas CUDA que le pediste
 # (p. ej. 86;89 = 3090 y 4090) y no arranca en otra (una 2060 es 7.5). Formato: índice de nvidia-smi = ruta
 #   GPU_SERVER_BINS=2=/home/tu/llama.cpp/build-sm75/bin/llama-server        (varias separadas por comas)
 GPU_SERVER_BINS = {k.strip(): v.strip() for k, _, v in
@@ -135,17 +135,17 @@ LLM_BASE_URL = LLM_LTM_URL
 LLM_MODEL = REMOTE_MODEL_ALIAS
 REQUEST_TIMEOUT_S = _int("REQUEST_TIMEOUT_S", "240")
 THINKING = _flag("THINKING", "0")
-# [PARCHE23] reutilizar en el servidor la caché KV del prefijo común del prompt (más rápido; con 2 slots las
+# reutilizar en el servidor la caché KV del prefijo común del prompt (más rápido; con 2 slots las
 # respuestas con T=0 pueden variar algo entre ejecuciones). El diagnóstico de determinismo decide si conviene 0.
 LLM_CACHE_PROMPT = _flag("LLM_CACHE_PROMPT", "1")
-# [PARCHE24] pensamiento del agente en la respuesta final: off | auto | on (ver src/pensar.py). La interfaz deja
+# pensamiento del agente en la respuesta final: off | auto | on (ver src/pensar.py). La interfaz deja
 # elegirlo por mensaje; este es el valor por defecto.
 AGENT_THINK = os.getenv("AGENT_THINK", "off").strip().lower()
 AGENT_THINK_EXTRA_TOKENS = _int("AGENT_THINK_EXTRA_TOKENS", "4096")
-# [PARCHE28] ingesta de documentos (panel de la consola) con hechos autocontenidos: suceso/sujeto y fecha absoluta
+# ingesta de documentos (panel de la consola) con hechos autocontenidos: suceso/sujeto y fecha absoluta
 # en cada hecho (ver src/documentos.py). La ingesta de conversaciones no cambia.
 DOC_SELF_CONTAINED = _flag("DOC_SELF_CONTAINED", "0")
-# [PARCHE29] regla de atribución a sucesos y documentos en el prompt del agente (ver agente.EVENT_RULE)
+# regla de atribución a sucesos y documentos en el prompt del agente (ver agente.EVENT_RULE)
 ATTRIB_EVENTS = _flag("ATTRIB_EVENTS", "0")
 
 # ============================================================
@@ -195,8 +195,8 @@ RRF_K = _int("RRF_K", "60")                            # constante de Reciprocal
 # Integración inter-memorias
 LTM_ENABLED = _flag("LTM_ENABLED", "1")
 LTM_DIRECT_RETRIEVAL = _flag("LTM_DIRECT_RETRIEVAL", "1")   # 1 = inyecta los hechos recuperados sin llamada LLM de sintesis (ver README: latencia medida)
-# [PARCHE13] hechos inyectados en modo directo (antes fijo en 6). En LoCoMo, 110 de 620 fallos tenían la evidencia
-# en los puestos 7-18. [PARCHE14] 10 por defecto: en LoCoMo, correctas 59,7 % → 61,9 % (p = 0,003) sin subir la
+# hechos inyectados en modo directo (antes fijo en 6). En LoCoMo, 110 de 620 fallos tenían la evidencia
+# en los puestos 7-18. 10 por defecto: en LoCoMo, correctas 59,7 % → 61,9 % (p = 0,003) sin subir la
 # invención (6,3 % → 7,0 %, p = 0,65); corpus propio 100 % / 100 % / 0 %.
 LTM_DIRECT_TOP_K = _int("LTM_DIRECT_TOP_K", "10")
 LTM_MIN_CHARS = _int("LTM_MIN_CHARS", "6")
@@ -212,26 +212,26 @@ LTM_DB_PATH = LTM_DIR / "memoria.db"
 # ============================================================
 MEM_NAV = _flag("MEM_NAV", "1")            # navegación por el árbol en cada consulta (≈1 llamada LLM por nivel)
 EPI_ENABLED = _flag("EPI_ENABLED", "1")    # registro literal de toda la conversación (SQLite + FTS5)
-EPI_LOOKUP_K = _int("EPI_LOOKUP_K", "22")   # episodios literales candidatos para el prompt ([PARCHE17] antes 6)
-# [PARCHE16] episodios que llegan al prompt (antes fijo en 5 en agente._build_system). Debe ser ≤ EPI_LOOKUP_K
-# (los repetidos con el corto plazo se descartan). [PARCHE17] 20 por defecto: en LoCoMo, correctas 61,9 % → 70,2 %
+EPI_LOOKUP_K = _int("EPI_LOOKUP_K", "22")   # episodios literales candidatos para el prompt antes 6)
+# episodios que llegan al prompt (antes fijo en 5 en agente._build_system). Debe ser ≤ EPI_LOOKUP_K
+# (los repetidos con el corto plazo se descartan). 20 por defecto: en LoCoMo, correctas 61,9 % → 70,2 %
 # (p < 0,001; multi-salto 35,5 → 47,5 %) sin subir la invención (7,0 → 5,8 %, p = 0,46). Coste: prompt ≈ +1.800 tokens.
 EPI_PROMPT_K = _int("EPI_PROMPT_K", "20")
-# [PARCHE19] descomposición de la pregunta en subconsultas (1 llamada LLM al servidor de memoria larga) y fusión
+# descomposición de la pregunta en subconsultas (1 llamada LLM al servidor de memoria larga) y fusión
 # RRF de lo recuperado con cada una, SIN subir el presupuesto (LTM_DIRECT_TOP_K hechos, EPI_PROMPT_K episodios).
 # 0 por defecto hasta que un experimento pareado en LoCoMo lo justifique (ver src/descomponer.py).
 LTM_DECOMPOSE = _flag("LTM_DECOMPOSE", "0")
 LTM_DECOMPOSE_MAX = _int("LTM_DECOMPOSE_MAX", "3")
-# [PARCHE20] (ver src/refinar.py) · ambas desactivadas por defecto hasta un experimento pareado en LoCoMo
+# (ver src/refinar.py) · ambas desactivadas por defecto hasta un experimento pareado en LoCoMo
 EPI_DIVERSITY = os.getenv("EPI_DIVERSITY", "off").strip().lower()   # off | dia (≤ EPI_PER_DAY episodios por día)
 EPI_PER_DAY = _int("EPI_PER_DAY", "3")
 EPI_DIVERSITY_POOL = _int("EPI_DIVERSITY_POOL", "3")    # se buscan EPI_LOOKUP_K × este factor candidatos
 LTM_SECOND_PASS = _flag("LTM_SECOND_PASS", "0")         # 2.ª pasada: 1 llamada LLM con lo recuperado
-# [PARCHE22] respuesta directa: el dato primero, en una frase (ver agente.DIRECT_RULE). Experimental hasta medirlo.
+# respuesta directa: el dato primero, en una frase (ver agente.DIRECT_RULE). Experimental hasta medirlo.
 ANSWER_DIRECT = _flag("ANSWER_DIRECT", "0")
 
 
-def _episode_limits(lookup: int, prompt: int) -> tuple[int, int]:  # [PARCHE18]
+def _episode_limits(lookup: int, prompt: int) -> tuple[int, int]:
     """Garantiza que se BUSCAN al menos los episodios que se muestran (+2 por los repetidos con el corto plazo).
     Un .env antiguo con EPI_LOOKUP_K=6 limitaba en silencio el prompt a 6 episodios aunque EPI_PROMPT_K fuese 20."""
     prompt = max(1, prompt)
@@ -330,12 +330,12 @@ if RETRIEVAL_PROFILE == "embeddings":
     MEM_RECALL_EXPAND = False
 
 # ============================================================
-# RERANKER  [PARCHE4]
+# RERANKER
 #   off   = sin reranker (compuerta clásica: embeddings + solapamiento)
 #   llm   = juez LLM: el modelo de la memoria larga decide qué candidatos responden (1 llamada por consulta)
 #   cross = cross-encoder (bge-reranker-v2-m3) servido por llama-server --reranking en RERANK_URL
 # ============================================================
-# [PARCHE8] off por defecto: a 10.108 hechos off y llm dan el mismo OBJETIVO (97,3 % · usuario 100 % · inventa 3,2 %)
+# off por defecto: a 10.108 hechos off y llm dan el mismo OBJETIVO (97,3 % · usuario 100 % · inventa 3,2 %)
 # y llm cuesta 2,2× de latencia + 1 llamada LLM por consulta. RERANK_MODE=llm sigue disponible en .env.
 RERANK_MODE = os.getenv("RERANK_MODE", "off").strip().lower()
 SERVER_PORT_RERANK = _int("SERVER_PORT_RERANK", "8090")
@@ -349,7 +349,7 @@ RERANK_TIMEOUT_S = _float("RERANK_TIMEOUT_S", "60")
 
 
 # ============================================================
-# [PARCHE31] SERVIDORES ELEGIDOS DESDE LA CONSOLA (panel «Modelos y GPUs» o scripts/modelos.py)
+# SERVIDORES ELEGIDOS DESDE LA CONSOLA (panel «Modelos y GPUs» o scripts/modelos.py)
 # Se guardan en BODY/servidores.json y PISAN al .env, porque son la elección más reciente del usuario. Solo se
 # guarda lo que difiere del .env; elegir de nuevo lo del .env borra la entrada. HMEM_IGNORE_SERVER_CHOICES=1 la ignora.
 # ============================================================

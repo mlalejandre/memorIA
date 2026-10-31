@@ -287,7 +287,7 @@ class _StubAgent:
 
     last_think = "sin llamar"
 
-    def chat(self, text, think=None):   # [PARCHE24] la interfaz reenvía el modo de pensamiento
+    def chat(self, text, think=None):   # la interfaz reenvía el modo de pensamiento
         _StubAgent.last_think = think
         return {"answer": "ok"}
 
@@ -450,7 +450,7 @@ class TestCartridgeWALCleanup(unittest.TestCase):
         self.assertFalse((target_dir / "memoria.db-shm").exists())
 
 
-class TestTentativeBandReachesPrompt(unittest.TestCase):  # [PARCHE1]
+class TestTentativeBandReachesPrompt(unittest.TestCase):
     """La banda tentativa de la compuerta debe llegar al prompt con aviso, separada de lo firme."""
 
     def _agent(self, results):
@@ -504,7 +504,7 @@ class TestTentativeBandReachesPrompt(unittest.TestCase):  # [PARCHE1]
         self.assertIn(LTM_CAUTION, system)
 
 
-class TestReranker(unittest.TestCase):  # [PARCHE4]
+class TestReranker(unittest.TestCase):
     def _rr(self, answer):
         from types import SimpleNamespace
         import rerank
@@ -575,7 +575,7 @@ class TestReranker(unittest.TestCase):  # [PARCHE4]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestNoDeductionRule(unittest.TestCase):  # [PARCHE6]
+class TestNoDeductionRule(unittest.TestCase):
     def test_rule_reaches_system_prompt(self):
         from agente import Agent
         system = Agent._build_system(None, {}, {"found": False}, None)
@@ -583,7 +583,7 @@ class TestNoDeductionRule(unittest.TestCase):  # [PARCHE6]
         self.assertIn("en vez de deducirlo", system)
 
 
-class TestAttributionRule(unittest.TestCase):  # [PARCHE12]
+class TestAttributionRule(unittest.TestCase):
     def test_attribution_and_relative_dates_reach_prompt(self):
         from agente import Agent
         system = Agent._build_system(None, {}, {"found": False}, None)
@@ -597,17 +597,17 @@ class TestAttributionRule(unittest.TestCase):  # [PARCHE12]
         self.assertIn("es de quien habla, no de su interlocutor", system)
 
 
-class TestEpisodePromptK(unittest.TestCase):  # [PARCHE16]
+class TestEpisodePromptK(unittest.TestCase):
     def _system(self, n):
         from agente import Agent
         epi = [{"ts": 1700000000.0 + i, "role": "user", "text": f"Persona{i}: episodio número {i}"} for i in range(n)]
         return Agent._build_system(None, {"recent": [], "hits": []}, {"found": False}, epi)
 
-    def test_default_is_twenty(self):  # [PARCHE17]
+    def test_default_is_twenty(self):
         self.assertEqual(C.EPI_PROMPT_K, int(os.environ.get("EPI_PROMPT_K", "20")))
         self.assertGreaterEqual(C.EPI_LOOKUP_K, C.EPI_PROMPT_K)
 
-    def test_lookup_never_below_prompt(self):  # [PARCHE18]
+    def test_lookup_never_below_prompt(self):
         self.assertEqual(C._episode_limits(6, 20), (22, 20))
         self.assertEqual(C._episode_limits(22, 20), (22, 20))
         self.assertEqual(C._episode_limits(30, 5), (30, 5))
@@ -626,9 +626,9 @@ class TestEpisodePromptK(unittest.TestCase):  # [PARCHE16]
         self.assertNotIn("episodio número 7", s)
 
 
-class TestDirectTopK(unittest.TestCase):  # [PARCHE13]
+class TestDirectTopK(unittest.TestCase):
     def test_default_matches_config(self):
-        self.assertEqual(C.LTM_DIRECT_TOP_K, int(os.environ.get("LTM_DIRECT_TOP_K", "10")))  # [PARCHE14]
+        self.assertEqual(C.LTM_DIRECT_TOP_K, int(os.environ.get("LTM_DIRECT_TOP_K", "10")))
 
     def test_top_k_limits_injected_facts(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_topk_"))
@@ -656,7 +656,7 @@ class TestDirectTopK(unittest.TestCase):  # [PARCHE13]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestDecomposition(unittest.TestCase):  # [PARCHE19]
+class TestDecomposition(unittest.TestCase):
     def test_clean_validates_llm_output(self):
         import descomponer as d
         q = "¿Qué deportes practican Ana y Luis?"
@@ -721,7 +721,7 @@ class TestDecomposition(unittest.TestCase):  # [PARCHE19]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestRefine(unittest.TestCase):  # [PARCHE20]
+class TestRefine(unittest.TestCase):
     def _ep(self, i, day):
         return {"id": i, "ts": time.mktime((2024, 3, day, 12, 0, 0, 0, 0, -1)) + i, "text": f"e{i}"}
 
@@ -777,7 +777,7 @@ class TestRefine(unittest.TestCase):  # [PARCHE20]
             shutil.rmtree(tmp, ignore_errors=True)
 
 
-class TestDirectAnswerAndFixedNow(unittest.TestCase):  # [PARCHE22]
+class TestDirectAnswerAndFixedNow(unittest.TestCase):
     def test_direct_rule_only_when_enabled(self):
         from agente import Agent, DIRECT_RULE
         with mock.patch.object(C, "ANSWER_DIRECT", False):
@@ -800,7 +800,7 @@ class TestDirectAnswerAndFixedNow(unittest.TestCase):  # [PARCHE22]
         self.assertIn(str(ROOT / "src"), sys.path)
 
 
-class TestVectorCacheIncremental(unittest.TestCase):  # [PARCHE8]
+class TestVectorCacheIncremental(unittest.TestCase):
     def test_append_without_rebuild_and_delete_rebuilds(self):
         tmp = Path(tempfile.mkdtemp(prefix="hmem_vc_"))
         try:
@@ -832,14 +832,14 @@ if __name__ == "__main__":
     unittest.main()
 
 
-class TestThinkingModes(unittest.TestCase):  # [PARCHE24]
+class TestThinkingModes(unittest.TestCase):
     def test_modes_and_reasons(self):
         import pensar
         self.assertEqual(pensar.decide("¿Cuándo fue Ana a Lisboa?", "off"), (False, "desactivado"))
         self.assertEqual(pensar.decide("Hola", "on"), (True, "activado siempre"))
         self.assertEqual(pensar.decide("¿Cuándo fue Ana a Lisboa?", "auto"), (True, "fechas"))
         self.assertEqual(pensar.decide("When did Gina go to a dance class?", "auto"), (True, "fechas"))
-        self.assertEqual(pensar.decide("¿Cuántas semanas duró el viaje?", "auto"), (False, "duración"))   # [PARCHE26]
+        self.assertEqual(pensar.decide("¿Cuántas semanas duró el viaje?", "auto"), (False, "duración"))
         self.assertEqual(pensar.decide("How long ago was Caroline's 18th birthday?", "auto"), (False, "duración"))
         self.assertEqual(pensar.decide("How long has Melanie been creating art?", "auto"), (False, "duración"))
         self.assertEqual(pensar.decide("¿Hace cuánto adopté a Thor?", "auto"), (False, "duración"))

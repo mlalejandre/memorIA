@@ -13,7 +13,7 @@ try:
 except ImportError:
     _nav = None
 try:
-    import descomponer as _decomp  # [PARCHE19]
+    import descomponer as _decomp
 except ImportError:
     _decomp = None
 
@@ -227,7 +227,7 @@ class RetrievalMixin:
             return empty([])
 
         include_history = self._wants_history(question)
-        # [PARCHE8] los canales con peso 0 NO se calculan: LIKE '%…%' y FTS5 recorren toda la memoria (O(N)) y su
+        # los canales con peso 0 NO se calculan: LIKE '%…%' y FTS5 recorren toda la memoria (O(N)) y su
         # resultado se descartaba. Si los embeddings no devuelven nada, se calculan igualmente como respaldo.
         emb_hits: list[dict[str, Any]] = []
         syn_hits: list[dict[str, Any]] = []
@@ -237,7 +237,7 @@ class RetrievalMixin:
                 emb_hits = emb.search_cells(question, include_history=include_history)
             except Exception:
                 emb_hits = []
-            # [PARCHE19] subconsultas: una búsqueda por cada una y fusión RRF con la de la pregunta original
+            # subconsultas: una búsqueda por cada una y fusión RRF con la de la pregunta original
             if extra_queries and _decomp is not None:
                 lists = [emb_hits]
                 for sub in extra_queries:
@@ -317,7 +317,7 @@ class RetrievalMixin:
         candidates = [by_id[i] for i in ordered]
         methods = [m for m, h in rankings.items() if h]
 
-        # [PARCHE4] Reranker (juez LLM o cross-encoder): reordena el top-K y decide si algo responde de verdad.
+        # Reranker (juez LLM o cross-encoder): reordena el top-K y decide si algo responde de verdad.
         rr_info = None
         _rr = getattr(self, "reranker", None)
         if _rr is not None and candidates and _rr.enabled():
@@ -351,8 +351,8 @@ class RetrievalMixin:
             synthesize = not bool(getattr(_cfg, "LTM_DIRECT_RETRIEVAL", False))
 
         if not synthesize and candidates:
-            _n_top = max(1, int(getattr(_cfg, "LTM_DIRECT_TOP_K", 6)))   # [PARCHE13] configurable (antes 6)
-            # [PARCHE4] con reranker: solo los recuerdos que responden (o 3 dudosos, con aviso)
+            _n_top = max(1, int(getattr(_cfg, "LTM_DIRECT_TOP_K", 6)))   # configurable (antes 6)
+            # con reranker: solo los recuerdos que responden (o 3 dudosos, con aviso)
             if rr_info is not None:
                 _n_top = int(rr_info.get("n_relevant") or 0) or 3
             top_cells = candidates[:max(1, min(_n_top, len(candidates)))]

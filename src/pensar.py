@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""[PARCHE24] Pensamiento opcional del agente.
+"""Pensamiento opcional del agente.
 
 Modos (AGENT_THINK en .env, o por mensaje desde la interfaz):
   off   el agente responde directamente (defecto; ~1,8 s por respuesta en el servidor de casa)
@@ -23,7 +23,7 @@ _ALIASES = {"0": "off", "no": "off", "false": "off", "off": "off", "nunca": "off
             "1": "on", "si": "on", "sí": "on", "yes": "on", "true": "on", "on": "on", "siempre": "on",
             "auto": "auto", "automatico": "auto", "automático": "auto"}
 
-# [PARCHE26] primero lo que NO debe pensar: duraciones y edades (en P24 pensar las empeoró)
+# primero lo que NO debe pensar: duraciones y edades (en P24 pensar las empeoró)
 SKIP: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("duración", re.compile(
         r"\b(how long|how many (days|weeks|months|years|hours)|how old|since when|ago|"
