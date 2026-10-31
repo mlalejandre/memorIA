@@ -12,6 +12,7 @@ from typing import Any
 import config as C
 import descomponer  # [PARCHE19]
 import pensar  # [PARCHE24]
+import documentos  # [PARCHE28]
 import refinar  # [PARCHE20]
 from cartuchos import CartridgeManager
 from corto_plazo import ShortTermMemory, fmt_ts, role_label
@@ -524,9 +525,13 @@ class Agent:
                 self.state["ltm_detail"] = f"Ingesta: extrayendo conceptos del bloque {idx + 1}/{len(chunks)}..."
                 facts = None
                 if hasattr(self.ltm, "extract_facts"):
-                    detected, facts = self.ltm.extract_facts(chunk, first=(idx == 0 and not explicit))
-                    if idx == 0 and not explicit and detected:
-                        effective_src = detected
+                    if documentos.enabled() and (explicit or idx > 0):   # [PARCHE28] hechos autocontenidos
+                        facts = documentos.extract(self.ltm.llm, chunk, effective_src,
+                                                   chunks[idx - 1] if idx > 0 else "")
+                    if facts is None:
+                        detected, facts = self.ltm.extract_facts(chunk, first=(idx == 0 and not explicit))
+                        if idx == 0 and not explicit and detected:
+                            effective_src = detected
                 if facts is None:
                     facts = [{"texto": chunk[:1200], "importancia": 7, "tipo": "dato"}]
                 for f in facts:

@@ -10,6 +10,13 @@
   servidor de la memoria larga.
 · Por cada pregunta, «claves» (fragmentos que debe contener la evidencia) separan los fallos en: ingesta (la
   memoria no tiene el dato), recuperación (está en la memoria pero no llega al prompt) y respuesta (llegó y falla).
+
+[PARCHE28] Desde textos, sin tocar ningún cartucho:
+    python3 benchmarks/cartucho.py --textos "experiment/textos/cabo_machichaco.txt=Wikipedia: Cabo Machichaco (vapor);\
+experiment/textos/incendio_santander_1941.txt=Wikipedia: Incendio de Santander de 1941" \
+        --variantes actual,autocontenidos --preguntas experiment/preguntas_santander.json --modos no
+  Ingiere cada texto con SU fuente en una memoria temporal por variante (actual = extract_facts de siempre;
+  autocontenidos = src/documentos.py) y compara las variantes pregunta a pregunta.
 """
 from __future__ import annotations
 
@@ -144,139 +151,238 @@ def paired(rows: list[dict[str, Any]], a: str, b: str) -> dict[str, Any]:
     return {"n": len(ids), "mejoran": up, "empeoran": down, "p": sign_p(down, up)}
 
 
+VARIANTS = ("actual", "actual2", "autocontenidos")   # actual2 = otra ingesta igual: ruido de la ingesta
+
+
+def paired_variants(rows_a: list[dict[str, Any]], rows_b: list[dict[str, Any]], mode: str = "no") -> dict[str, Any]:
+    """Variante a → b en el mismo modo (correcta en positivas, no inventar en trampas)."""
+    from locomo import sign_p
+    good = lambda r: (r["veredicto"] is True) if r["tipo"] != "trampa" else (r["veredicto"] is False)
+    ra = {r["id"]: r for r in rows_a if r["modo"] == mode}
+    rb = {r["id"]: r for r in rows_b if r["modo"] == mode}
+    ids = [i for i in ra if i in rb]
+    out = {}
+    for name, sel in (("todas", lambda r: True), ("positivas", lambda r: r["tipo"] != "trampa"),
+                      ("trampas", lambda r: r["tipo"] == "trampa")):
+        ii = [i for i in ids if sel(ra[i])]
+        up = sum(1 for i in ii if not good(ra[i]) and good(rb[i]))
+        down = sum(1 for i in ii if good(ra[i]) and not good(rb[i]))
+        out[name] = {"n": len(ii), "mejoran": up, "empeoran": down, "p": sign_p(down, up)}
+    return out
+
+
+def parse_texts(spec: str) -> list[tuple[Path, str]]:
+    out = []
+    for part in [x for x in spec.split(";") if x.strip()]:
+        path, _, src = part.partition("=")
+        out.append((Path(path.strip()), src.strip() or Path(path.strip()).stem))
+    return out
+
+
+def build_from_texts(dest: Path, texts: list[tuple[Path, str]], variant: str) -> dict[str, Any]:
+    """Ingesta REAL (como el panel de la consola) de cada texto con SU fuente en una memoria nueva."""
+    from agente import split_chunks
+    from largo_plazo import MemLLM, MemoryTree
+    import documentos
+    t0 = time.time()
+    tree = MemoryTree(dest, MemLLM())
+    n_facts = n_fail = n_chunks = 0
+    for path, src in texts:
+        chunks = split_chunks(Path(path).read_text(encoding="utf-8"))
+        n_chunks += len(chunks)
+        for idx, chunk in enumerate(chunks):
+            facts = None
+            if variant == "autocontenidos":
+                facts = documentos.extract(tree.llm, chunk, src, chunks[idx - 1] if idx > 0 else "")
+            if facts is None:
+                _det, facts = tree.extract_facts(chunk, first=False)
+            if facts is None:
+                n_fail += 1
+                continue
+            for f in facts:
+                imp = max(9.0, f["importancia"]) if f["tipo"] == "instruccion" else f["importancia"]
+                tree.store(f["texto"], imp, f["tipo"], meta={"fuente": src})
+                n_facts += 1
+        print(f"   · [{variant}] {Path(path).name}: {len(chunks)} bloques · {n_facts} hechos hasta ahora", flush=True)
+    return {"tree": tree, "hechos_guardados": n_facts, "bloques": n_chunks, "fallos_extraccion": n_fail,
+            "min_ingesta": (time.time() - t0) / 60}
+
+
+def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat: Any, jchat: Any) -> dict[str, Any]:
+    from agente import BASE_PROMPT, Agent, now_str
+    import pensar
+    from locomo import fact_lines, judge_once
+    t_start = time.time()
+    cells = [str(r[0]) for r in tree.conn.execute(
+        "SELECT text FROM cells WHERE archived = 0 AND valid_until IS NULL AND superseded_by IS NULL")]
+    n_nodes = int(tree.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
+    try:
+        n_epi = int(tree.conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0])
+    except sqlite3.Error:
+        n_epi = 0
+    all_text = "\n".join(cells)
+    print(f"\n   [{label}] {len(cells)} hechos vigentes · {n_nodes} nodos · {n_epi} episodios")
+    ret: dict[str, dict[str, Any]] = {}
+    for q in qs:
+        t0 = time.perf_counter()
+        r = tree.recall(q["q"], reinforce=False, synthesize=False)
+        epi = tree.search_episodes(q["q"], int(getattr(C, "EPI_LOOKUP_K", 22))) or []
+        ms = (time.perf_counter() - t0) * 1000
+        found, tent, ans = bool(r.get("found")), bool(r.get("tentative")), str(r.get("answer") or "")
+        ltm = {"found": found, "tentative": tent, "sources": list(r.get("sources") or []),
+               "answer": "" if tent else (ans if found else ""), "tentative_answer": ans if (found and tent) else ""}
+        system = Agent._build_system(None, {}, ltm, epi)
+        lines = fact_lines(ans) if found else []
+        n_epi_prompt = max(1, int(getattr(C, "EPI_PROMPT_K", 5)))
+        ctx_text = "\n".join(lines) + "\n" + "\n".join(str(e.get("text", "")) for e in epi[:n_epi_prompt])
+        ret[q["id"]] = {"system": system, "ms": ms, "hechos": lines,
+                        "en_memoria": has_keys(all_text, q["claves"]), "en_prompt": has_keys(ctx_text, q["claves"])}
+    lat = sorted(v["ms"] for v in ret.values())
+    p95 = lat[int(0.95 * (len(lat) - 1))] if lat else 0.0
+    pos_q = [q for q in qs if q["tipo"] != "trampa"]
+    print(f"   [{label}] recuperación: P95 {p95:.0f} ms · el dato está en la memoria en "
+          f"{sum(ret[q['id']]['en_memoria'] for q in pos_q)}/{len(pos_q)} y llega al prompt en "
+          f"{sum(ret[q['id']]['en_prompt'] for q in pos_q)}/{len(pos_q)} (según las claves)")
+    rows: list[dict[str, Any]] = []
+    jobs = [(m, q) for m in modes for q in qs]
+
+    def judge(row: dict[str, Any]) -> None:
+        if row["tipo"] == "trampa":
+            user = f"Pregunta: {row['q']}\nRespuesta trampa: {row['trampa']}\nRespuesta del asistente: {row['respuesta']}"
+            row["veredicto"] = judge_once(jchat, NEG_JUDGE, user, "inventa")
+        else:
+            user = f"Pregunta: {row['q']}\nRespuesta de referencia: {row['ref']}\nRespuesta del asistente: {row['respuesta']}"
+            row["veredicto"] = judge_once(jchat, POS_JUDGE, user, "correcta")
+
+    print(f"   [{label}] … {len(jobs)} respuestas (1 a la vez, T=0) + juez a la vez · modos: {', '.join(modes)}", flush=True)
+    t0 = time.time()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as exj:
+        futs = []
+        for k, (mode, q) in enumerate(jobs, 1):
+            if mode == "sin memoria":
+                system, th, why = BASE_PROMPT.format(now=now_str()), False, "sin memoria"
+            else:
+                system = ret[q["id"]]["system"]
+                th, why = pensar.decide(q["q"], {"no": "off", "auto": "auto", "siempre": "on"}[mode])
+            mt = int(C.ANSWER_MAX_TOKENS) + pensar.extra_tokens() if th else 700
+            t_a = time.perf_counter()
+            try:
+                ans = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": q["q"]}],
+                                max_tokens=mt, temperature=0.0, cache_prompt=False,
+                                **({"thinking": True} if th else {}))
+            except Exception as exc:
+                ans = f"[error LLM: {type(exc).__name__}]"
+            info = ret[q["id"]]
+            row = {"id": q["id"], "modo": mode, "tipo": q["tipo"], "q": q["q"], "ref": q.get("ref", ""),
+                   "trampa": q.get("trampa", ""), "respuesta": ans, "t": round(time.perf_counter() - t_a, 2),
+                   "piensa": th, "motivo_piensa": why, "en_memoria": info["en_memoria"],
+                   "en_prompt": info["en_prompt"], "causa": cause(info["en_memoria"], info["en_prompt"]),
+                   "hechos": info["hechos"][:15]}
+            rows.append(row)
+            futs.append(exj.submit(judge, row))
+            if k % 20 == 0 or k == len(jobs):
+                el = (time.time() - t0) / 60
+                print(f"     {k}/{len(jobs)} respuestas · {el:.0f} min · quedan ≈{el / k * (len(jobs) - k):.0f} min",
+                      flush=True)
+        for f in futs:
+            f.result()
+    summ = summarize(rows)
+    print(f"\n   RESULTADOS [{label}]")
+    for mode, s in summ.items():
+        causes = " · ".join(f"{k} {v}" for k, v in sorted(s["causas"].items(), key=lambda x: -x[1])) or "—"
+        types = " · ".join(f"{t} {v[0]}/{v[1]}" for t, v in sorted(s["por_tipo"].items()))
+        print(f"   {mode:<12} correctas {s['correctas']}/{s['n_pos']} = {100 * s['correctas'] / max(1, s['n_pos']):.1f} % · "
+              f"inventa {s['inventa']}/{s['n_neg']} · mediana {s['t_p50']:.1f} s · piensan {s['piensan']} · "
+              f"fallos: {causes}")
+        print(f"   {'':<12} por tipo: {types}")
+    pairs = {f"{x}→{y}": paired(rows, x, y) for x, y in (("sin memoria", "no"), ("no", "auto"), ("no", "siempre"))
+             if x in modes and y in modes}
+    for k, v in pairs.items():
+        print(f"   pareado {k}: n={v['n']} · mejoran {v['mejoran']} · empeoran {v['empeoran']} · p={v['p']:.3f}")
+    srcs: dict[str, int] = {}
+    for r in tree.conn.execute("SELECT fuente FROM cells WHERE archived = 0"):
+        srcs[str(r[0])] = srcs.get(str(r[0]), 0) + 1
+    return {"etiqueta": label, "hechos": len(cells), "nodos": n_nodes, "episodios": n_epi, "p95_ms": p95,
+            "fuentes": srcs, "resumen": summ, "pareados": pairs, "min": (time.time() - t_start) / 60,
+            "evidencia": {"en_memoria": sum(ret[q['id']]['en_memoria'] for q in pos_q),
+                          "en_prompt": sum(ret[q['id']]['en_prompt'] for q in pos_q), "n": len(pos_q)},
+            "filas": rows}
+
+
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Examen de un cartucho con preguntas escritas a mano")
-    ap.add_argument("--cartucho", required=True)
+    ap = argparse.ArgumentParser(description="Examen de un cartucho (o de textos ingeridos aparte) con preguntas a mano")
+    g = ap.add_mutually_exclusive_group(required=True)
+    g.add_argument("--cartucho")
+    g.add_argument("--textos", help='"ruta=fuente;ruta=fuente" · se ingieren en memorias temporales')
+    ap.add_argument("--variantes", default=",".join(VARIANTS))
     ap.add_argument("--preguntas", required=True)
     ap.add_argument("--modos", default=",".join(MODES))
     ap.add_argument("--json", default="")
     a = ap.parse_args()
 
-    from agente import BASE_PROMPT, Agent, now_str
     from largo_plazo import MemLLM, MemoryTree
     from llm import LLM
-    import pensar
-    from locomo import fact_lines, judge_once
 
     qs = load_questions(Path(a.preguntas))
     modes = [m.strip() for m in a.modos.split(",") if m.strip() in MODES]
     tmp = Path(tempfile.mkdtemp(prefix="hmem_cartucho_"))
     t_start = time.time()
+    chat = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
+    jchat = LLM(base_url=os.getenv("HMEM_JUDGE_URL", "").strip() or C.LLM_LTM_URL, model=C.REMOTE_MODEL_ALIAS)
+    print(f"   {len(qs)} preguntas: " + " · ".join(
+        f"{t} {sum(1 for q in qs if q['tipo'] == t)}" for t in sorted({q['tipo'] for q in qs})))
+    trees = []
     try:
-        try:
-            copy_cartridge(a.cartucho, tmp / a.cartucho)
-        except FileNotFoundError as exc:
-            print(f"❌ Cartucho «{a.cartucho}» no encontrado ({exc}). Mira los nombres en body/cartuchos/.")
-            return 1
-        tree = MemoryTree(tmp / a.cartucho, MemLLM())
-        cells = [str(r[0]) for r in tree.conn.execute(
-            "SELECT text FROM cells WHERE archived = 0 AND valid_until IS NULL AND superseded_by IS NULL")]
-        n_nodes = int(tree.conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0])
-        try:
-            n_epi = int(tree.conn.execute("SELECT COUNT(*) FROM episodes").fetchone()[0])
-        except sqlite3.Error:
-            n_epi = 0
-        all_text = "\n".join(cells)
-        print(f"   cartucho «{a.cartucho}» (copia): {len(cells)} hechos vigentes · {n_nodes} nodos · {n_epi} episodios")
-        print(f"   {len(qs)} preguntas: " + " · ".join(
-            f"{t} {sum(1 for q in qs if q['tipo'] == t)}" for t in sorted({q['tipo'] for q in qs})))
-
-        # recuperación (una vez por pregunta; igual para todos los modos con memoria)
-        ret: dict[str, dict[str, Any]] = {}
-        for q in qs:
-            t0 = time.perf_counter()
-            r = tree.recall(q["q"], reinforce=False, synthesize=False)
-            epi = tree.search_episodes(q["q"], int(getattr(C, "EPI_LOOKUP_K", 22))) or []
-            ms = (time.perf_counter() - t0) * 1000
-            found, tent, ans = bool(r.get("found")), bool(r.get("tentative")), str(r.get("answer") or "")
-            ltm = {"found": found, "tentative": tent, "sources": list(r.get("sources") or []),
-                   "answer": "" if tent else (ans if found else ""), "tentative_answer": ans if (found and tent) else ""}
-            system = Agent._build_system(None, {}, ltm, epi)
-            lines = fact_lines(ans) if found else []
-            n_epi_prompt = max(1, int(getattr(C, "EPI_PROMPT_K", 5)))
-            ctx_text = "\n".join(lines) + "\n" + "\n".join(str(e.get("text", "")) for e in epi[:n_epi_prompt])
-            ret[q["id"]] = {"system": system, "ms": ms, "hechos": lines,
-                            "en_memoria": has_keys(all_text, q["claves"]), "en_prompt": has_keys(ctx_text, q["claves"])}
-        lat = sorted(v["ms"] for v in ret.values())
-        p95 = lat[int(0.95 * (len(lat) - 1))] if lat else 0.0
-        pos_q = [q for q in qs if q["tipo"] != "trampa"]
-        print(f"   recuperación: P95 {p95:.0f} ms · el dato está en la memoria en "
-              f"{sum(ret[q['id']]['en_memoria'] for q in pos_q)}/{len(pos_q)} y llega al prompt en "
-              f"{sum(ret[q['id']]['en_prompt'] for q in pos_q)}/{len(pos_q)} (según las claves)")
-
-        chat = LLM(base_url=C.LLM_STM_URL, model=C.REMOTE_MODEL_ALIAS)
-        jchat = LLM(base_url=os.getenv("HMEM_JUDGE_URL", "").strip() or C.LLM_LTM_URL, model=C.REMOTE_MODEL_ALIAS)
-        rows: list[dict[str, Any]] = []
-        jobs = [(m, q) for m in modes for q in qs]
-
-        def judge(row: dict[str, Any]) -> None:
-            if row["tipo"] == "trampa":
-                user = f"Pregunta: {row['q']}\nRespuesta trampa: {row['trampa']}\nRespuesta del asistente: {row['respuesta']}"
-                row["veredicto"] = judge_once(jchat, NEG_JUDGE, user, "inventa")
-            else:
-                user = f"Pregunta: {row['q']}\nRespuesta de referencia: {row['ref']}\nRespuesta del asistente: {row['respuesta']}"
-                row["veredicto"] = judge_once(jchat, POS_JUDGE, user, "correcta")
-
-        print(f"   … {len(jobs)} respuestas (1 a la vez, T=0) + juez a la vez · modos: {', '.join(modes)}", flush=True)
-        t0 = time.time()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as exj:
-            futs = []
-            for k, (mode, q) in enumerate(jobs, 1):
-                if mode == "sin memoria":
-                    system, th, why = BASE_PROMPT.format(now=now_str()), False, "sin memoria"
-                else:
-                    system = ret[q["id"]]["system"]
-                    th, why = pensar.decide(q["q"], {"no": "off", "auto": "auto", "siempre": "on"}[mode])
-                mt = int(C.ANSWER_MAX_TOKENS) + pensar.extra_tokens() if th else 700
-                t_a = time.perf_counter()
-                try:
-                    ans = chat.chat([{"role": "system", "content": system}, {"role": "user", "content": q["q"]}],
-                                    max_tokens=mt, temperature=0.0, cache_prompt=False,
-                                    **({"thinking": True} if th else {}))
-                except Exception as exc:
-                    ans = f"[error LLM: {type(exc).__name__}]"
-                info = ret[q["id"]]
-                row = {"id": q["id"], "modo": mode, "tipo": q["tipo"], "q": q["q"], "ref": q.get("ref", ""),
-                       "trampa": q.get("trampa", ""), "respuesta": ans, "t": round(time.perf_counter() - t_a, 2),
-                       "piensa": th, "motivo_piensa": why, "en_memoria": info["en_memoria"],
-                       "en_prompt": info["en_prompt"], "causa": cause(info["en_memoria"], info["en_prompt"]),
-                       "hechos": info["hechos"][:15]}
-                rows.append(row)
-                futs.append(exj.submit(judge, row))
-                if k % 20 == 0 or k == len(jobs):
-                    el = (time.time() - t0) / 60
-                    print(f"     {k}/{len(jobs)} respuestas · {el:.0f} min · quedan ≈{el / k * (len(jobs) - k):.0f} min",
-                          flush=True)
-            for f in futs:
-                f.result()
-        summ = summarize(rows)
-        print("\n   RESULTADOS")
-        for mode, s in summ.items():
-            causes = " · ".join(f"{k} {v}" for k, v in sorted(s["causas"].items(), key=lambda x: -x[1])) or "—"
-            types = " · ".join(f"{t} {v[0]}/{v[1]}" for t, v in sorted(s["por_tipo"].items()))
-            print(f"   {mode:<12} correctas {s['correctas']}/{s['n_pos']} = {100 * s['correctas'] / max(1, s['n_pos']):.1f} % · "
-                  f"inventa {s['inventa']}/{s['n_neg']} · mediana {s['t_p50']:.1f} s · piensan {s['piensan']} · "
-                  f"fallos: {causes}")
-            print(f"   {'':<12} por tipo: {types}")
-        pairs = {f"{x}→{y}": paired(rows, x, y) for x, y in (("sin memoria", "no"), ("no", "auto"), ("no", "siempre"))
-                 if x in modes and y in modes}
-        for k, v in pairs.items():
-            print(f"   pareado {k}: n={v['n']} · mejoran {v['mejoran']} · empeoran {v['empeoran']} · p={v['p']:.3f}")
-        out = {"fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "cartucho": a.cartucho, "hechos": len(cells), "nodos": n_nodes,
-               "episodios": n_epi, "p95_ms": p95, "resumen": summ, "pareados": pairs, "min": (time.time() - t_start) / 60,
-               "evidencia": {"en_memoria": sum(ret[q['id']]['en_memoria'] for q in pos_q),
-                             "en_prompt": sum(ret[q['id']]['en_prompt'] for q in pos_q), "n": len(pos_q)},
-               "filas": rows}
-        dest = Path(a.json) if a.json else ROOT / "resultados_parches" / f"cartucho_{a.cartucho}_{time.strftime('%Y%m%d_%H%M%S')}.json"
+        if a.cartucho:
+            try:
+                copy_cartridge(a.cartucho, tmp / a.cartucho)
+            except FileNotFoundError as exc:
+                print(f"❌ Cartucho «{a.cartucho}» no encontrado ({exc}). Mira los nombres en body/cartuchos/.")
+                return 1
+            tree = MemoryTree(tmp / a.cartucho, MemLLM())
+            trees.append(tree)
+            out = exam(tree, f"cartucho {a.cartucho} (copia)", qs, modes, chat, jchat)
+            out["cartucho"] = a.cartucho
+        else:
+            texts = parse_texts(a.textos)
+            for p, _s in texts:
+                if not p.exists():
+                    print(f"❌ No existe {p}")
+                    return 1
+            variants = [v.strip() for v in a.variantes.split(",") if v.strip() in VARIANTS]
+            out = {"textos": [[str(p), s] for p, s in texts], "variantes": {}}
+            for v in variants:
+                print(f"\n   … ingesta [{v}] de {len(texts)} textos (cada uno con su fuente)", flush=True)
+                b = build_from_texts(tmp / v, texts, v)
+                trees.append(b["tree"])
+                print(f"   [{v}] ingesta: {b['hechos_guardados']} hechos de {b['bloques']} bloques en "
+                      f"{b['min_ingesta']:.1f} min · fallos de extracción {b['fallos_extraccion']}", flush=True)
+                e = exam(b["tree"], v, qs, modes, chat, jchat)
+                e.update({k: b[k] for k in ("hechos_guardados", "bloques", "fallos_extraccion", "min_ingesta")})
+                out["variantes"][v] = e
+            out["pareado"] = {}
+            for b2 in ("actual2", "autocontenidos"):
+                if "actual" in out["variantes"] and b2 in out["variantes"]:
+                    out["pareado"][f"actual→{b2}"] = {m: paired_variants(out["variantes"]["actual"]["filas"],
+                                                                         out["variantes"][b2]["filas"], m) for m in modes}
+            for name, per_mode in out["pareado"].items():
+                for m, pv in per_mode.items():
+                    for k, v in pv.items():
+                        print(f"   pareado {name} · {m} · {k}: n={v['n']} · mejoran {v['mejoran']} · "
+                              f"empeoran {v['empeoran']} · p={v['p']:.3f}")
+        out.update({"fecha": time.strftime("%Y-%m-%dT%H:%M:%S"), "min": (time.time() - t_start) / 60})
+        name = a.cartucho or "textos"
+        dest = Path(a.json) if a.json else ROOT / "resultados_parches" / f"cartucho_{name}_{time.strftime('%Y%m%d_%H%M%S')}.json"
         dest.parent.mkdir(parents=True, exist_ok=True)
         dest.write_text(json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8")
         print(f"\n   detalle: {dest}")
-        try:
-            tree.close()
-        except Exception:
-            pass
         return 0
     finally:
+        for tr in trees:
+            try:
+                tr.close()
+            except Exception:
+                pass
         shutil.rmtree(tmp, ignore_errors=True)
 
 

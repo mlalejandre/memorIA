@@ -128,6 +128,9 @@ LLM_CACHE_PROMPT = _flag("LLM_CACHE_PROMPT", "1")
 # elegirlo por mensaje; este es el valor por defecto.
 AGENT_THINK = os.getenv("AGENT_THINK", "off").strip().lower()
 AGENT_THINK_EXTRA_TOKENS = _int("AGENT_THINK_EXTRA_TOKENS", "4096")
+# [PARCHE28] ingesta de documentos (panel de la consola) con hechos autocontenidos: suceso/sujeto y fecha absoluta
+# en cada hecho (ver src/documentos.py). La ingesta de conversaciones no cambia.
+DOC_SELF_CONTAINED = _flag("DOC_SELF_CONTAINED", "0")
 
 # ============================================================
 # MEMORIA A CORTO PLAZO (STM)

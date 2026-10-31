@@ -78,3 +78,41 @@ class TestCartucho(unittest.TestCase):
                     cartucho.copy_cartridge("no_existe", tmp / "x")
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
+
+
+class TestDocumentos(unittest.TestCase):  # [PARCHE28]
+    def test_prompt_and_parse(self):
+        import documentos
+        p = documentos.prompt("Esa misma noche arribó el crucero Canarias.", "Wikipedia: Incendio de Santander de 1941",
+                              "Durante el día 18 el gobernador difundió un boletín.")
+        self.assertIn("Documento: Wikipedia: Incendio de Santander de 1941", p)
+        self.assertIn("día 18", p)
+        self.assertIn("fecha absoluta", p)
+        self.assertIn("<<<Esa misma noche", p)
+        facts = documentos.parse({"hechos": [{"texto": "La noche del 18 de febrero de 1941 llegó el crucero Canarias.",
+                                              "importancia": 7}, "x", {"texto": "ok hecho", "tipo": "instruccion"}]})
+        self.assertEqual(len(facts), 2)
+        self.assertEqual(facts[1]["tipo"], "instruccion")
+        self.assertIsNone(documentos.parse("no json"))
+
+    def test_extract_falls_back_on_error(self):
+        import documentos
+
+        class Boom:
+            def ask_json(self, *a, **k):
+                raise RuntimeError("caído")
+        self.assertIsNone(documentos.extract(Boom(), "texto"))
+
+    def test_default_off_and_conversations_untouched(self):
+        import documentos
+        self.assertFalse(documentos.enabled() and not C.DOC_SELF_CONTAINED)
+        self.assertNotIn("documentos", (ROOT / "src" / "ltm" / "ingestion.py").read_text(encoding="utf-8"))
+
+    def test_parse_texts_and_paired_variants(self):
+        t = cartucho.parse_texts("a.txt=Wikipedia: A;b.txt")
+        self.assertEqual([(str(p), s) for p, s in t], [("a.txt", "Wikipedia: A"), ("b.txt", "b")])
+        mk = lambda i, tipo, v: {"id": i, "modo": "no", "tipo": tipo, "veredicto": v}
+        a = [mk("1", "directa", False), mk("2", "directa", True), mk("3", "trampa", True)]
+        b = [mk("1", "directa", True), mk("2", "directa", True), mk("3", "trampa", False)]
+        pv = cartucho.paired_variants(a, b)
+        self.assertEqual((pv["todas"]["mejoran"], pv["positivas"]["mejoran"], pv["trampas"]["mejoran"]), (2, 1, 1))
