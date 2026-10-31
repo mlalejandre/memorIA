@@ -101,6 +101,12 @@ REMOTE_MODEL_PATH_STM = os.getenv("REMOTE_MODEL_PATH_STM", "").strip()
 # modelos que ya conoces, p. ej. /mnt/IA/models para /mnt/IA/models/nail-35b/x.gguf).
 REMOTE_MODEL_PATH_LTM = os.getenv("REMOTE_MODEL_PATH_LTM", "").strip()
 REMOTE_MODELS_DIR = os.getenv("REMOTE_MODELS_DIR", "").strip()
+# [PARCHE32] llama-server propio para alguna GPU: tu compilación solo trae las arquitecturas CUDA que le pediste
+# (p. ej. 86;89 = 3090 y 4090) y no arranca en otra (una 2060 es 7.5). Formato: índice de nvidia-smi = ruta
+#   GPU_SERVER_BINS=2=/home/tu/llama.cpp/build-sm75/bin/llama-server        (varias separadas por comas)
+GPU_SERVER_BINS = {k.strip(): v.strip() for k, _, v in
+                   (x.partition("=") for x in os.getenv("GPU_SERVER_BINS", "").split(","))
+                   if k.strip().isdigit() and v.strip()}
 REMOTE_MODEL_ALIAS = os.getenv("REMOTE_MODEL_ALIAS", "local-model")
 REMOTE_THREADS = _int("REMOTE_THREADS", "8")
 SERVER_AUTOSTART = _flag("SERVER_AUTOSTART", "0")

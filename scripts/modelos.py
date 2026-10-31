@@ -8,6 +8,8 @@
     python3 scripts/modelos.py emb --gpu 2          # embeddings a la GPU 2
     python3 scripts/modelos.py ltm nail             # memoria larga con nail-35b
     python3 scripts/modelos.py stm GSQ-RCO-IQ3_S --no-guardar   # prueba sin guardar la elección
+    python3 scripts/modelos.py --latencia-emb       # ms por consulta de embeddings, en reposo y con el chat vecino
+    python3 scripts/modelos.py --compilar-gpu 2     # compila un llama-server para la GPU 2 (sin tocar el tuyo)
 
 Con la consola ABIERTA usa mejor su panel «🧩 Modelos y GPUs»: pone en pausa el agente mientras cambia.
 """
@@ -57,8 +59,20 @@ def main() -> int:
     ap.add_argument("--forzar", action="store_true", help="aunque parezca no caber en la VRAM")
     ap.add_argument("--no-guardar", action="store_true", help="no guardar la elección (BODY/servidores.json)")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--latencia-emb", action="store_true", help="[PARCHE32] mide la latencia de los embeddings")
+    ap.add_argument("--n", type=int, default=40)
+    ap.add_argument("--compilar-gpu", help="[PARCHE32] compila llama-server para la arquitectura de esa GPU")
     a = ap.parse_args()
     inv = modelos.inventory()
+    if a.latencia_emb:
+        print(json.dumps(modelos.emb_latency(a.n, inv), ensure_ascii=False))
+        return 0
+    if a.compilar_gpu is not None:
+        print(f"· compilando llama-server para la GPU {a.compilar_gpu} en el servidor (10-40 min; no toca tu build/)…",
+              flush=True)
+        r = modelos.compile_for_gpu(a.compilar_gpu, inv)
+        print(json.dumps(r, ensure_ascii=False))
+        return 0 if r.get("ok") else 1
     if not a.role:
         if a.json:
             print(json.dumps(inv, ensure_ascii=False, indent=2))

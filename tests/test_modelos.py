@@ -26,6 +26,7 @@ NAIL = "/mnt/IA/models/nail-35b/Nail-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf"
 QWEN = "/mnt/IA/models/qwen3.8-27b-gsq-rco-iq3_s/Qwen3.8-27B-GSQ-RCO-IQ3_S.gguf"
 BGE = "/mnt/IA/models/embeddings/bge-m3-Q8_0.gguf"
 BIN = "/home/u/llama.cpp/build/bin/llama-server"
+BIN75 = "/home/u/llama.cpp/build-sm75/bin/llama-server"
 
 
 def llm_argv(model, port, ctx, np_):
@@ -53,6 +54,9 @@ class FakeRemote:
         self.add(8089, [BIN, "-m", BGE, "--alias", "bge-m3", "--port", "8089", "--embeddings", "-c", "8192"],
                  {"CUDA_VISIBLE_DEVICES": "1"}, "08:00.0", 1500)
         self.fail_models = set()
+        # [PARCHE32] tu compilación: 3090 y 4090 sí, 2060 no
+        self.caches = {BIN: ["CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=86;89", "GGML_NATIVE:BOOL=OFF"],
+                       BIN75: ["CMAKE_CUDA_ARCHITECTURES:UNINITIALIZED=75", "GGML_NATIVE:BOOL=OFF"]}
 
     def add(self, port, argv, env, bus, mb, ready_in=0):
         pid = str(self.next_pid)
@@ -89,17 +93,21 @@ class FakeRemote:
                 lines.append("##GPUS")
                 for idx, bus, name, total in self.gpus:
                     used = sum(p["mb"] for p in self.procs.values() if p["alive"] and p["bus"] == bus.split(":", 1)[1].lower())
-                    lines.append(f"{idx}, {bus}, {name}, {used}, {total}")
+                    cap = {"0": "8.9", "1": "8.6", "2": "7.5"}[idx]
+                    lines.append(f"c6, {idx}, {bus}, {name}, {used}, {total}, {cap}")
                 lines.append("##APPS")
                 for pid, p in self.procs.items():
                     if p["alive"]:
                         lines.append(f"{pid}, 00000000:{p['bus'].upper()}, {p['mb']}")
+                for b in re.findall(r"##BIN (\S+)'", cmd):
+                    lines += [f"##BIN {b}", f"path={b}"] + [f"cache={c}" for c in self.caches.get(b, [])]
                 for port in re.findall(r"##PORT (\d+)", cmd):
                     pid = self.listener(int(port))
                     lines += [f"##PORT {port}", f"pid={pid or ''}"]
                     if pid:
                         p = self.procs[pid]
                         lines.append(f"exe={p['argv'][0]}")
+                        lines += [f"cache={c}" for c in self.caches.get(p["argv"][0], [])]
                         lines += [f"arg={a}" for a in p["argv"]] + ["arg="]
                         lines += [f"env={k}={v}" for k, v in p["env"].items()]
             lines.append("##MODELS")
@@ -129,7 +137,8 @@ class FakeRemote:
             argv = toks[i + 1:]
             model = argv[argv.index("-m") + 1]
             port = int(argv[argv.index("--port") + 1])
-            pid = self.add(port, argv, env, self._gpu_of(env), 12000 if model == QWEN else 21000, ready_in=2)
+            mb = 1500 if "--embeddings" in argv else 12000 if model == QWEN else 21000
+            pid = self.add(port, argv, env, self._gpu_of(env), mb, ready_in=2)
             if model in self.fail_models:
                 self.procs[pid]["alive"] = False
             out = f"pid={pid}\n"
@@ -148,6 +157,7 @@ class TestModelos(unittest.TestCase):
                                                  "GPU0_INDEX", "GPU1_INDEX", "GPU2_INDEX", "SLOT_CTX_GPU1",
                                                  "REMOTE_CTX_GPU0", "PARALLEL_SLOTS_GPU1", "EMB_MODEL_PATH",
                                                  "REMOTE_MODELS_DIR", "SERVERS_CHOICE_FILE", "ENV_SERVER_DEFAULTS",
+                                                 "GPU_SERVER_BINS", "LLAMA_SERVER_BIN",
                                                  "SERVER_PORT_GPU0", "SERVER_PORT_GPU1", "SERVER_PORT_GPU2")}
         self.flags = {k: getattr(servidor, k) for k in ("_started_gpu0", "_started_gpu1", "_started_gpu2")}
         C.REMOTE_MODEL_PATH, C.REMOTE_MODEL_PATH_STM, C.REMOTE_MODEL_PATH_LTM = NAIL, "", ""
@@ -155,6 +165,7 @@ class TestModelos(unittest.TestCase):
         C.SLOT_CTX_GPU1, C.PARALLEL_SLOTS_GPU1, C.REMOTE_CTX_GPU0 = 40960, 2, 32768
         C.SERVER_PORT_GPU0, C.SERVER_PORT_GPU1, C.SERVER_PORT_GPU2 = 8087, 8088, 8089
         C.EMB_MODEL_PATH, C.REMOTE_MODELS_DIR = BGE, ""
+        C.GPU_SERVER_BINS, C.LLAMA_SERVER_BIN = {}, BIN
         C.SERVERS_CHOICE_FILE = Path(self.tmp.name) / "servidores.json"
         C.ENV_SERVER_DEFAULTS = {"ltm": {"model": NAIL, "gpu": "0", "ctx": 32768},
                                  "stm": {"model": NAIL, "gpu": "1", "ctx": 81920},
@@ -232,8 +243,8 @@ class TestModelos(unittest.TestCase):
         with self.assertRaises(ValueError):
             modelos.plan("stm", inv, QWEN, None, 100)         # contexto absurdo
         with self.assertRaises(modelos.NeedsForce):
-            modelos.plan("stm", inv, NAIL, "2")               # 19 GB no caben en la 2060
-        self.assertEqual(modelos.plan("stm", inv, NAIL, "2", force=True)["gpu"], "2")
+            modelos.plan("ltm", inv, NAIL, "1")               # 19 GB no caben junto al STM en la 3090
+        self.assertEqual(modelos.plan("ltm", inv, NAIL, "1", force=True)["gpu"], "1")
 
     def test_plan_counts_vram_freed_by_the_server_it_replaces(self):
         inv = self.inv()   # la 3090 tiene 23,5 GB en uso, 22 de ellos del STM actual
@@ -241,8 +252,8 @@ class TestModelos(unittest.TestCase):
         self.assertGreater(p["free_mb"], p["need_mb"])
 
     def test_plan_emb_moves_gpu_only(self):
-        p = modelos.plan("emb", self.inv(), None, "2")
-        self.assertIn("CUDA_VISIBLE_DEVICES=2", p["cmd"])
+        p = modelos.plan("emb", self.inv(), None, "0")
+        self.assertIn("CUDA_VISIBLE_DEVICES=0", p["cmd"])
         self.assertIn(BGE, p["cmd"])
         self.assertIn("--embeddings", p["argv"])
 
@@ -285,9 +296,9 @@ class TestModelos(unittest.TestCase):
         self.assertEqual(C.load_server_choices(), {})   # nada guardado
 
     def test_switch_without_save(self):
-        evs = self.events("emb", gpu="2", save=False)
+        evs = self.events("emb", gpu="0", save=False)
         self.assertEqual(evs[-1]["event"], "done", evs)
-        self.assertEqual(self.r.procs[self.r.listener(8089)]["bus"], "09:00.0")
+        self.assertEqual(self.r.procs[self.r.listener(8089)]["bus"], "01:00.0")
         self.assertFalse(C.SERVERS_CHOICE_FILE.exists())
 
     def test_switch_starts_stopped_server(self):
@@ -298,9 +309,9 @@ class TestModelos(unittest.TestCase):
         self.assertEqual(C.load_server_choices(), {"ltm": {"model": QWEN}})
 
     def test_needs_force_event(self):
-        evs = self.events("stm", model=NAIL, gpu="2")
+        evs = self.events("ltm", model=NAIL, gpu="1")
         self.assertTrue(evs[-1].get("need_force"))
-        self.assertTrue(self.r.listener(8088))      # no se ha parado nada
+        self.assertTrue(self.r.listener(8087))      # no se ha parado nada
 
     def test_guarded_refuses_when_agent_busy(self):
         busy = SimpleNamespace(acquire=lambda timeout: False, release=lambda: None)
@@ -313,6 +324,66 @@ class TestModelos(unittest.TestCase):
             self.assertEqual(evs[-1]["event"], "done")
             self.assertFalse(agent._chat_lock.locked() or agent.ltm_lock.locked())
             self.assertTrue(agent.logs)
+
+    # ---------------------------------------------------------------- [PARCHE32] arquitecturas CUDA
+    def test_arch_ok(self):
+        b = {"archs": ["86", "89"]}
+        self.assertTrue(modelos.arch_ok("8.6", b))
+        self.assertTrue(modelos.arch_ok("8.9", b))
+        self.assertFalse(modelos.arch_ok("7.5", b))
+        self.assertTrue(modelos.arch_ok("7.5", {"archs": ["75"]}))
+        self.assertTrue(modelos.arch_ok("8.9", {"archs": ["75"]}))          # PTX: sirve en GPUs más nuevas
+        self.assertFalse(modelos.arch_ok("8.6", {"archs": ["75-real"]}))
+        self.assertIsNone(modelos.arch_ok("7.5", {"archs": ["native"]}))
+        self.assertIsNone(modelos.arch_ok("7.5", {"archs": None}))
+        self.assertIsNone(modelos.arch_ok(None, b))
+
+    def test_inventory_marks_2060_incompatible(self):
+        inv = self.inv()
+        self.assertEqual([g["cap"] for g in inv["gpus"]], ["8.9", "8.6", "7.5"])
+        emb = inv["servers"]["emb"]
+        self.assertEqual(emb["gpu_ok"], {"0": True, "1": True, "2": False})
+        self.assertEqual(inv["gpus"][2]["incompatible"], ["STM", "LTM", "EMB"])
+        self.assertTrue(any("scripts/modelos.py --compilar-gpu 2" in w for w in inv["warnings"]))
+
+    def test_plan_refuses_incompatible_gpu_even_forced(self):
+        with self.assertRaises(ValueError) as cm:
+            modelos.plan("emb", self.inv(), None, "2", force=True)
+        self.assertIn("86;89", str(cm.exception))
+        self.assertNotIsInstance(cm.exception, modelos.NeedsForce)
+
+    def test_gpu_server_bin_used_for_that_gpu_only(self):
+        C.GPU_SERVER_BINS = {"2": BIN75}
+        inv = self.inv()
+        self.assertTrue(inv["servers"]["emb"]["gpu_ok"]["2"])
+        p = modelos.plan("emb", inv, None, "2")
+        self.assertEqual(p["argv"][0], BIN75)
+        self.assertIn(BIN, p["rollback"])                      # para volver, el binario de antes
+        evs = self.events("emb", gpu="2", save=False)
+        self.assertEqual(evs[-1]["event"], "done", evs)
+        back = modelos.plan("emb", self.inv(), None, "1")      # de la 2060 a la 3090: vuelve al binario del .env
+        self.assertEqual(back["argv"][0], BIN)
+
+    def test_resolve_prefers_exact_ending(self):
+        mtp = "/mnt/IA/models/qwen3.8-27b-gsq-rco-iq3_s-mtp/Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf"
+        self.r.files.append((12_100_000_000, mtp))
+        models = self.inv()["models"]
+        self.assertEqual(modelos.resolve_model("GSQ-RCO-IQ3_S", models), QWEN)
+        self.assertEqual(modelos.resolve_model("iq3_s-mtp", models), mtp)
+        self.assertEqual(modelos.resolve_model("Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf", models), mtp)
+
+    def test_build_script_keeps_your_build(self):
+        sh, out, log = modelos.build_script("/home/u/llama.cpp/build", "75")
+        self.assertEqual(out, "/home/u/llama.cpp/build-sm75")
+        self.assertIn("-DCMAKE_CUDA_ARCHITECTURES=75", sh)
+        self.assertIn("grep -v '^GGML_NATIVE'", sh)
+        self.assertNotIn("rm ", sh)
+
+    def test_emb_latency_reports_error_without_server(self):
+        inv = self.inv()
+        inv["servers"]["emb"]["port"] = 1   # nada escucha ahí
+        r = modelos.emb_latency(3, inv, load=False)
+        self.assertIn("error", r)
 
     # ---------------------------------------------------------------- config y consola
     def test_apply_choice_sets_process_config(self):

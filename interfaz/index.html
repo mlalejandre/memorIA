@@ -753,7 +753,7 @@ function renderServers(inv) {
     return;
   }
   const gpus = inv.gpus || [];
-  $('srv-gpus').innerHTML = gpus.length ? gpus.map(g => '<b>GPU ' + esc(g.index) + '</b> · ' + esc(g.name) + ' · ' +
+  $('srv-gpus').innerHTML = gpus.length ? gpus.map(g => '<b>GPU ' + esc(g.index) + '</b> · ' + esc(g.name) + (g.cap ? ' (compute ' + esc(g.cap) + ')' : '') + ' · ' +
       gb(g.used_mb) + ' / ' + gb(g.total_mb) + ' GB en uso · ' + (g.servers.length ? esc(g.servers.join(', ')) : 'sin servidores de la memoria')).join('<br>')
     : 'Sin datos de GPU (nvidia-smi no responde).';
   $('srv-warn').innerHTML = (inv.warnings || []).map(w => '⚠ ' + esc(w)).join('<br>');
@@ -779,8 +779,12 @@ function renderServers(inv) {
     const curGpu = s.gpu != null ? String(s.gpu) : '';
     html += '<label class="stat-sub">GPU</label><select id="srv-gpu-' + role + '" style="' + sel + '">' +
       (curGpu ? '' : '<option value="" selected>la de ahora</option>') +
-      gpus.map(g => '<option value="' + esc(g.index) + '"' + (String(g.index) === curGpu ? ' selected' : '') + '>GPU ' + esc(g.index) + ' · ' + esc(g.name) +
-        ' · libres ' + gb(g.total_mb - g.used_mb + (String(g.index) === curGpu && s.vram_mb ? s.vram_mb : 0)) + ' GB</option>').join('') + '</select>';
+      gpus.map(g => {   // [PARCHE32] una GPU para la que tu llama-server no está compilado no se puede elegir
+        const bad = s.gpu_ok && s.gpu_ok[g.index] === false;
+        return '<option value="' + esc(g.index) + '"' + (String(g.index) === curGpu ? ' selected' : '') + (bad ? ' disabled' : '') + '>GPU ' + esc(g.index) + ' · ' + esc(g.name) +
+          ' · libres ' + gb(g.total_mb - g.used_mb + (String(g.index) === curGpu && s.vram_mb ? s.vram_mb : 0)) + ' GB' +
+          (bad ? ' · ⚠ tu llama-server no está compilado para ella' : '') + '</option>';
+      }).join('') + '</select>';
     if(role !== 'emb') {
       html += '<label class="stat-sub">Contexto total (tokens' + (role === 'stm' && s.slots ? ', repartido entre ' + s.slots + ' slots' : '') + ')</label>' +
         '<input id="srv-ctx-' + role + '" type="number" min="2048" step="1024" value="' + (s.ctx || (s.config && s.config.ctx) || '') + '" style="' + sel + '">';

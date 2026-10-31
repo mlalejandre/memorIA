@@ -2,6 +2,12 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE32] -->
+- The model selector knows which GPUs each `llama-server` build can run on: it reads every GPU's compute capability (`nvidia-smi`) and the CUDA architectures of each build (`build/CMakeCache.txt`). A GPU the build does not cover is shown disabled with the fix, instead of trying and rolling back. Found on the server: the build has `CMAKE_CUDA_ARCHITECTURES=86;89` (RTX 3090 and 4090), so the RTX 2060 (compute 7.5) cannot run it.
+- `GPU_SERVER_BINS` (e.g. `2=/path/build-sm75/bin/llama-server`): a separate `llama-server` for one GPU, used only there. `scripts/modelos.py --compilar-gpu N` builds it on the server in `build-sm<arch>`, copying the existing build's options and changing only the CUDA architecture; `--latencia-emb` measures milliseconds per embedding call, idle and while the chat model on the same GPU is generating.
+- Model names: a fragment that matches several files picks the one whose name ends with it (`GSQ-RCO-IQ3_S` is not the `-mtp` file).
+- `parche.py --solo-eval` measures the embedding latency on each compatible GPU and, for the answering-model comparison, puts the long-term-memory server on the base's judge model while measuring and back afterwards, so no manual step is needed.
+- Patch 31 result: the console panel switched models on the real server; moving the embeddings to the RTX 2060 failed and went back to the RTX 3090 (the reason above). The answering-model comparison was not run: `GSQ-RCO-IQ3_S` matched two files, and both servers had been set to Qwen3.8 in the console, which would also change the judge.
 <!-- [PARCHE31] -->
 - Choose the model, GPU and context of each server from the web console (panel "🧩 Modelos y GPUs") or from the terminal (`python3 scripts/modelos.py`). The panel lists the GPUs, which server runs on which GPU and the `.gguf` files on the server; a change restarts that server with its current command line, changing only `-m`, `-c` and the GPU, waits for `/health`, and goes back to the previous command line if the new model does not load. The agent is paused while a server changes. The choice is saved in `body/servidores.json` and overrides `.env`; choosing the `.env` values again removes it. The embedding model cannot be changed there (stored vectors depend on it), only its GPU.
 - `REMOTE_MODEL_PATH_LTM` (long-term-memory model, defaults to `REMOTE_MODEL_PATH`) and `REMOTE_MODELS_DIR` (where to look for `.gguf` files; defaults to the parent folder of the known models).

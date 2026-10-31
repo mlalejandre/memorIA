@@ -193,6 +193,7 @@ Everything is an environment variable or a line in `.env` (see [`.env.example`](
 | `DOC_SELF_CONTAINED` | `0` | document ingestion (console panel) writes self-contained facts: each names its event or subject and the absolute date when the text allows; conversation ingestion is unchanged |
 | `REMOTE_MODEL_PATH_STM` | — | optional `.gguf` for the answering server (GPU 1) only; memory ingestion keeps `REMOTE_MODEL_PATH` |
 | `REMOTE_MODEL_PATH_LTM` | — | optional `.gguf` for the long-term-memory server (GPU 0); empty = `REMOTE_MODEL_PATH` |
+| `GPU_SERVER_BINS` | — | a separate `llama-server` per GPU index for GPUs your main build was not compiled for, e.g. `2=/home/you/llama.cpp/build-sm75/bin/llama-server` (`scripts/modelos.py --compilar-gpu 2` builds it) |
 | `REMOTE_MODELS_DIR` | — | folders on the server with `.gguf` files for the model selector (comma-separated); empty = parent folder of the known models |
 | `ATTRIB_EVENTS` | `0` | experimental prompt rule: check that a fact belongs to the event, date or document asked about (using its source) and say it is not recorded instead of filling the gap |
 | `LLM_CACHE_PROMPT` | `1` | reuse the server's KV cache for a shared prompt prefix (faster; with several slots, temperature-0 answers may vary slightly) |
