@@ -1,0 +1,272 @@
+{
+  "_parche": "[PARCHE25] línea base del corpus propio de v0.3.0a4",
+  "version": "0.3.0a4",
+  "config": {
+    "RETRIEVAL_PROFILE": "embeddings",
+    "RERANK_MODE": "off",
+    "LTM_DIRECT_TOP_K": "10",
+    "EPI_PROMPT_K": "20",
+    "EPI_LOOKUP_K": "22",
+    "LTM_DECOMPOSE": "False",
+    "EPI_DIVERSITY": "off",
+    "LTM_SECOND_PASS": "False",
+    "ANSWER_DIRECT": "False",
+    "THINKING": "False",
+    "LLM_CACHE_PROMPT": "True",
+    "AGENT_THINK": "off",
+    "REMOTE_MODEL_ALIAS": "nail-35b",
+    "EMB_MODEL_ALIAS": "bge-m3",
+    "SERVER_IP": "192.168.1.200"
+  },
+  "fecha": "2026-10-30T23:11:16",
+  "reproducir": {
+    "propio": "HMEM_ESCALA=\"10000,100000\" HMEM_ESCALA_E2E=\"0,max\" python3 benchmarks/prueba.py --live --only escala"
+  },
+  "propio": {
+    "fuente": "parche25_20261030_205120_S_escala.json",
+    "checks": [
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +0 · sin memoria",
+        "ok": true,
+        "value": "61.6% / 2.5% / 0.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +0 · off",
+        "ok": true,
+        "value": "82.1%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +0 · off",
+        "ok": true,
+        "value": "417 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +0 · off",
+        "ok": true,
+        "value": "100.0% / 100.0% / 0.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +0 · llm·tentativa",
+        "ok": true,
+        "value": "95.5%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +0 · llm·tentativa",
+        "ok": true,
+        "value": "1255 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +0 · llm·tentativa",
+        "ok": true,
+        "value": "99.1% / 97.5% / 0.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +10000 · off",
+        "ok": true,
+        "value": "82.1%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +10000 · off",
+        "ok": true,
+        "value": "451 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +10000 · llm·tentativa",
+        "ok": true,
+        "value": "90.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +10000 · llm·tentativa",
+        "ok": true,
+        "value": "1329 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +100000 · off",
+        "ok": true,
+        "value": "81.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +100000 · off",
+        "ok": true,
+        "value": "446 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +100000 · off",
+        "ok": true,
+        "value": "99.1% / 100.0% / 3.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +100000 · llm·tentativa",
+        "ok": true,
+        "value": "90.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +100000 · llm·tentativa",
+        "ok": true,
+        "value": "1553 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +100000 · llm·tentativa",
+        "ok": true,
+        "value": "99.1% / 97.5% / 3.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Consulta tras añadir 1 hecho (100109 hechos)",
+        "ok": true,
+        "value": "382 ms",
+        "target": "≤ 1500 ms y lo encuentra",
+        "severity": "medio",
+        "where": "vectores.py · VectorStore._matrix (caché incremental)",
+        "hint": "Si tarda mucho más que la 2.ª consulta, cada hecho nuevo reconstruye el índice entero.",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · correctas (100108 hechos)",
+        "ok": true,
+        "value": "99.1%",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "rerank.py / ltm/retrieval.py",
+        "hint": "Producción: off.",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · correctas del usuario (100108 hechos)",
+        "ok": true,
+        "value": "100.0%",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "rerank.py / ltm/retrieval.py",
+        "hint": "Las únicas preguntas que el LLM no puede responder sin memoria.",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · invenciones personales (100108 hechos)",
+        "ok": true,
+        "value": "3.2% (≤16.2%)",
+        "target": "≤ 5.0%",
+        "severity": "alto",
+        "where": "rerank.py / agente.py",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · latencia P95 (100108 hechos)",
+        "ok": true,
+        "value": "446 ms",
+        "target": "≤ 1500 ms",
+        "severity": "medio",
+        "where": "vectores.py / rerank.py",
+        "hint": "",
+        "evidence": []
+      }
+    ]
+  }
+}

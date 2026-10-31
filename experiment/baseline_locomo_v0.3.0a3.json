@@ -1,0 +1,318 @@
+{
+  "_parche": "[PARCHE17] línea base de LoCoMo congelada de v0.3.0a3",
+  "version": "0.3.0a3",
+  "config": {
+    "RETRIEVAL_PROFILE": "embeddings",
+    "RERANK_MODE": "off",
+    "LTM_DIRECT_TOP_K": 10,
+    "EPI_PROMPT_K": 20,
+    "EPI_LOOKUP_K": 22,
+    "LLM": "nail-35b",
+    "embeddings": "bge-m3"
+  },
+  "fecha": "2026-10-29T17:24:44",
+  "reproducir": "HMEM_LOCOMO_CONV=all python3 benchmarks/prueba.py --live --only locomo",
+  "nota_latencia": "P95 de recuperación medido con una red más lenta hasta el servidor de embeddings (≈ +200 ms)",
+  "locomo": {
+    "fuente": "parche16_20261029_125359_locomo.json",
+    "checks": [
+      {
+        "suite": "locomo",
+        "name": "Ingesta: fallos de extracción/almacenamiento",
+        "ok": true,
+        "value": "0",
+        "target": "0",
+        "severity": "medio",
+        "where": "ltm/ingestion.py · extract_facts / ltm/storage.py · store",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Ingesta: hechos por minuto",
+        "ok": true,
+        "value": "123.8",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/storage.py · store",
+        "hint": "0.3 llamadas LLM por hecho",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Ingesta: sustituciones temporales",
+        "ok": true,
+        "value": "16",
+        "target": "(auditar)",
+        "severity": "info",
+        "where": "ltm/storage.py · _detect_temporal_supersession",
+        "hint": "",
+        "evidence": [
+          "«El usuario está montando un estudio de baile.» ⇒ «El usuario (Jon) tiene un estudio de danza propio.»",
+          "«Jon está buscando un local para abrir un estudio d» ⇒ «Jon tiene un estudio de danza.»",
+          "«Jon está emprendiendo para convertir su pasión por» ⇒ «Jon transformó su pasión por el baile en un negoci»",
+          "«Jon transformó su pasión por el baile en un negoci» ⇒ «Jon perdió su empleo, lo que le impulsó a emprende»"
+        ]
+      },
+      {
+        "suite": "locomo",
+        "name": "Hechos redactados como 'el usuario'",
+        "ok": true,
+        "value": "67.5%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts (regla 1)",
+        "hint": "LoCoMo no tiene 'usuario': si es alto, la extracción asume un único interlocutor.",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Idioma de los hechos (es / en)",
+        "ok": true,
+        "value": "96.2% / 0.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Prompt de sistema (mediana / P95, caracteres)",
+        "ok": true,
+        "value": "7188 / 8223",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "agente.py · _build_system",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Evidencia en el prompt (categorías 1-4)",
+        "ok": true,
+        "value": "87.4%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · recall / episodica.py",
+        "hint": "entre candidatos: 89.6%",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · P95 recuperación (recall + episódica)",
+        "ok": true,
+        "value": "397 ms",
+        "target": "≤ 1500 ms",
+        "severity": "medio",
+        "where": "vectores.py / ltm/retrieval.py / episodica.py",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Similitud top-1 P50 (con respuesta / adversariales)",
+        "ok": true,
+        "value": "0.72 / 0.67",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · _classify_relevance",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Hechos inyectados sin identidad ('el usuario')",
+        "ok": true,
+        "value": "1.5%",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts (regla 1)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Evidencia en puestos 7-18 (candidata, no inyectada)",
+        "ok": true,
+        "value": "219/1536",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · modo directo (top-6)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Lo recuperado llega al prompt real del agente",
+        "ok": true,
+        "value": "1986/1986",
+        "target": "todas",
+        "severity": "alto",
+        "where": "agente.py · _build_system",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · multi-salto",
+        "ok": true,
+        "value": "47.5% (n=282)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · temporal",
+        "ok": true,
+        "value": "68.8% (n=321)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · inferencia",
+        "ok": true,
+        "value": "53.1% (n=96)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · un salto",
+        "ok": true,
+        "value": "80.3% (n=841)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · referencia sin memoria",
+        "ok": true,
+        "value": "3.3% (n=30)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · fallos por causa",
+        "ok": true,
+        "value": "respuesta 306 · selección 26 · recuperación 126 · ingesta 0",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Invenciones: origen (episódica / hechos)",
+        "ok": true,
+        "value": "episódica 23 · ? 1 · hechos 1 · ninguno claro 1",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "agente.py · _build_system",
+        "hint": "posibles etiquetas erróneas: 5",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · correctas",
+        "ok": true,
+        "value": "61.9% → 70.2% (n=1540 · mejoran 175 · empeoran 47 · p=0.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "agente.py · BASE_PROMPT",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · inventa",
+        "ok": true,
+        "value": "7.0% → 5.8% (n=446 · mejoran 17 · empeoran 12 · p=0.458)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "agente.py · BASE_PROMPT",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Inventa con / sin hechos de 'el usuario' en contexto",
+        "ok": true,
+        "value": "sí 7.1% (n=42) · no 5.7% (n=404)",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Fallos con evidencia en puestos 7-18",
+        "ok": true,
+        "value": "69/458",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · modo directo (top-6)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "OBJETIVO LoCoMo · correctas (categorías 1-4)",
+        "ok": false,
+        "value": "70.2% [67.9%–72.4%]",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "ver 'fallos por causa'",
+        "hint": "n=1540 · comparable en orden de magnitud con el J publicado",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "OBJETIVO LoCoMo · inventa (adversariales)",
+        "ok": false,
+        "value": "5.8% [4.0%–8.4%]",
+        "target": "≤ 5.0%",
+        "severity": "alto",
+        "where": "agente.py · BASE_PROMPT / ltm/retrieval.py · compuerta",
+        "hint": "n=446",
+        "evidence": [
+          "«What is Caroline's hand-painted bowl a reminder of» → «Caroline's hand-painted bowl is a reminder of **art and self»",
+          "«What precautionary sign did Caroline see at the ca» → «The sign Caroline saw at the café stated that someone was no»",
+          "«What did Gina receive from a dance contest?» → «Gina received a trophy from a dance contest. She described i»",
+          "«What is Joanna's favorite movie trilogy?» → «Based on the provided memory, Joanna's favorite movie trilog»"
+        ]
+      }
+    ]
+  },
+  "tiempo_respuesta": {
+    "5": {
+      "tiempo": "1.44 s / 2.46 s",
+      "prompt": "4930 / 5404",
+      "correctas": "70.0% [52.1%–83.3%]"
+    },
+    "20": {
+      "tiempo": "1.72 s / 2.38 s",
+      "prompt": "7201 / 8839",
+      "correctas": "76.7% [59.1%–88.2%]"
+    }
+  }
+}

@@ -1,0 +1,869 @@
+{
+  "_parche": "[PARCHE14] línea base congelada de v0.3.0a2",
+  "version": "0.3.0a2",
+  "config": {
+    "RETRIEVAL_PROFILE": "embeddings",
+    "RERANK_MODE": "off",
+    "LTM_DIRECT_TOP_K": 10,
+    "LLM": "nail-35b",
+    "embeddings": "bge-m3",
+    "numpy": true
+  },
+  "fecha": "2026-10-29T11:54:34",
+  "reproducir": {
+    "propio": "python3 benchmarks/prueba.py --live --only escala",
+    "locomo": "HMEM_LOCOMO_CONV=all python3 benchmarks/prueba.py --live --only locomo"
+  },
+  "propio": {
+    "niveles": {
+      "0": {
+        "ref": "61.6% / 2.5% / 0.0%",
+        "h1": "82.1%",
+        "p95": "305 ms",
+        "c": "100.0%",
+        "u": "100.0%",
+        "i": "0.0%",
+        "llm": "98.2% / 95.0% / 0.0%"
+      },
+      "10000": {
+        "h1": "82.1%",
+        "p95": "339 ms"
+      },
+      "100000": {
+        "h1": "81.2%",
+        "p95": "357 ms",
+        "c": "99.1%",
+        "u": "97.5%",
+        "i": "3.2%",
+        "llm": "98.2% / 95.0% / 3.2%"
+      }
+    },
+    "checks": [
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +0 · sin memoria",
+        "ok": true,
+        "value": "61.6% / 2.5% / 0.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +0 · off",
+        "ok": true,
+        "value": "82.1%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +0 · off",
+        "ok": true,
+        "value": "305 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +0 · off",
+        "ok": true,
+        "value": "100.0% / 100.0% / 0.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +0 · llm·tentativa",
+        "ok": true,
+        "value": "95.5%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +0 · llm·tentativa",
+        "ok": true,
+        "value": "847 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +0 · llm·tentativa",
+        "ok": true,
+        "value": "98.2% / 95.0% / 0.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +10000 · off",
+        "ok": true,
+        "value": "82.1%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +10000 · off",
+        "ok": true,
+        "value": "339 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +10000 · llm·tentativa",
+        "ok": true,
+        "value": "90.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +10000 · llm·tentativa",
+        "ok": true,
+        "value": "1125 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +100000 · off",
+        "ok": true,
+        "value": "81.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +100000 · off",
+        "ok": true,
+        "value": "357 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +100000 · off",
+        "ok": true,
+        "value": "99.1% / 97.5% / 3.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Hit@1 · +100000 · llm·tentativa",
+        "ok": true,
+        "value": "89.3%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "P95 · +100000 · llm·tentativa",
+        "ok": true,
+        "value": "1130 ms",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "e2e correctas / usuario / inventa · +100000 · llm·tentativa",
+        "ok": true,
+        "value": "98.2% / 95.0% / 3.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "escala",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "Consulta tras añadir 1 hecho (100109 hechos)",
+        "ok": true,
+        "value": "332 ms",
+        "target": "≤ 1500 ms y lo encuentra",
+        "severity": "medio",
+        "where": "vectores.py · VectorStore._matrix (caché incremental)",
+        "hint": "Si tarda mucho más que la 2.ª consulta, cada hecho nuevo reconstruye el índice entero.",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · correctas (100108 hechos)",
+        "ok": true,
+        "value": "99.1%",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "rerank.py / ltm/retrieval.py",
+        "hint": "Producción: off.",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · correctas del usuario (100108 hechos)",
+        "ok": true,
+        "value": "97.5%",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "rerank.py / ltm/retrieval.py",
+        "hint": "Las únicas preguntas que el LLM no puede responder sin memoria.",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · invenciones personales (100108 hechos)",
+        "ok": true,
+        "value": "3.2% (≤16.2%)",
+        "target": "≤ 5.0%",
+        "severity": "alto",
+        "where": "rerank.py / agente.py",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "escala",
+        "name": "OBJETIVO a escala · latencia P95 (100108 hechos)",
+        "ok": true,
+        "value": "357 ms",
+        "target": "≤ 1500 ms",
+        "severity": "medio",
+        "where": "vectores.py / rerank.py",
+        "hint": "",
+        "evidence": []
+      }
+    ]
+  },
+  "regresion": [
+    {
+      "suite": "e2e_abstencion",
+      "name": "Positivas personales correctas · A · agente (producción)",
+      "ok": true,
+      "value": "12/12",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "e2e_abstencion",
+      "name": "Negativas del usuario donde inventa · A · agente (producción)",
+      "ok": true,
+      "value": "0/20",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "e2e_abstencion",
+      "name": "Positivas personales correctas · B · sin compuerta + aviso",
+      "ok": true,
+      "value": "12/12",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "e2e_abstencion",
+      "name": "Negativas del usuario donde inventa · B · sin compuerta + aviso",
+      "ok": true,
+      "value": "0/20",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "e2e_abstencion",
+      "name": "Positivas personales correctas · C · dos niveles",
+      "ok": true,
+      "value": "12/12",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "e2e_abstencion",
+      "name": "Negativas del usuario donde inventa · C · dos niveles",
+      "ok": true,
+      "value": "0/20",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "e2e_abstencion",
+      "name": "Negativas del usuario donde inventa · sin memoria (referencia)",
+      "ok": true,
+      "value": "0/20",
+      "target": "(observación)",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Tamaño del benchmark (preguntas)",
+      "ok": true,
+      "value": "108",
+      "target": "≥ 100",
+      "severity": "info",
+      "where": "",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@1 global",
+      "ok": true,
+      "value": "94.4%",
+      "target": "≥ 70%",
+      "severity": "alto",
+      "where": "ltm/retrieval.py · recall (fusión RRF)",
+      "hint": "Ver tabla de canales: ¿la fusión empeora al mejor canal?",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@3 global",
+      "ok": true,
+      "value": "98.1%",
+      "target": "≥ 85%",
+      "severity": "alto",
+      "where": "ltm/retrieval.py · recall",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "MRR global",
+      "ok": true,
+      "value": "0.960",
+      "target": "≥ 0.750",
+      "severity": "alto",
+      "where": "ltm/retrieval.py · recall",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Recall@18 (el hecho está entre los candidatos)",
+      "ok": true,
+      "value": "98.1%",
+      "target": "≥ 95%",
+      "severity": "alto",
+      "where": "ltm/retrieval.py · candidatos de cada canal",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@3 preguntas literales",
+      "ok": true,
+      "value": "100.0%",
+      "target": "≥ 95.0%",
+      "severity": "alto",
+      "where": "ltm/retrieval.py · _fts_search/_exact_search",
+      "hint": "Si fallan las literales, el problema es léxico, no semántico.",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@3 paráfrasis (sinónimos, ≤1 palabra común)",
+      "ok": true,
+      "value": "100.0%",
+      "target": "≥ 80%",
+      "severity": "alto",
+      "where": "vectores.py · embeddings / EMB_MIN_SIM",
+      "hint": "Calibra EMB_MIN_SIM y revisa el modelo de embeddings.",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@3 preguntas indirectas (inferencia)",
+      "ok": true,
+      "value": "94.4%",
+      "target": "≥ 60%",
+      "severity": "medio",
+      "where": "navegacion.py / vectores.py",
+      "hint": "",
+      "evidence": [
+        "«¿Qué objeto celeste concentra más masa que el Sol en una esf» → esperado «Una estrella de neutrones es el núcleo colapsado de una…» | top1 «Júpiter es el planeta más grande del sistema solar y ti…» (rank=None)",
+        "«¿Qué prevención se recomienda a los niños para evitar mancha» → esperado «La vacuna contra el sarampión forma parte de la triple …» | top1 «Júpiter es el planeta más grande del sistema solar y ti…» (rank=None)"
+      ]
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@3 del peor dominio",
+      "ok": true,
+      "value": "91.7% (Astronomía)",
+      "target": "≥ 60%",
+      "severity": "medio",
+      "where": "ontología / colocación en store()",
+      "hint": "Sesgo por dominio: Astronomía 91.7%, Salud 91.7%, Biología 100.0%, Datos personales 100.0%",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Latencia P95 de recall",
+      "ok": true,
+      "value": "303 ms",
+      "target": "≤ 800 ms",
+      "severity": "medio",
+      "where": "ltm/retrieval.py · navegación y _path_str",
+      "hint": "P50=208 ms · P99=314 ms",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "La fusión RRF no empeora al mejor canal individual",
+      "ok": true,
+      "value": "98.1% vs 98.1%",
+      "target": "Δ ≥ −3 pp",
+      "severity": "alto",
+      "where": "config.py · RRF_W_* / ltm/retrieval.py",
+      "hint": "Si un canal solo rinde más que la fusión, los pesos RRF o los canales auxiliares (árbol, sinapsis) añaden ruido.",
+      "evidence": [
+        "léxico=66.7% embeddings=98.1% fusión=98.1%"
+      ]
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Abstención firme (no afirma con certeza sin respuesta)",
+      "ok": true,
+      "value": "82.5%",
+      "target": "≥ 80%",
+      "severity": "medio",
+      "where": "ltm/retrieval.py · modo directo (Zero-LLM)",
+      "hint": "En modo directo siempre se inyectan los 6 mejores candidatos aunque no tengan relación: riesgo de contaminar el prompt. Añade un umbral mínimo de similitud/BM25 para declarar found=False.",
+      "evidence": [
+        "respondió (sin deber) a: «¿Quién escribió Hamlet?»",
+        "respondió (sin deber) a: «¿Cuál es la velocidad del sonido en el aire?»",
+        "respondió (sin deber) a: «¿Cuál es el océano más grande de la Tierra?»",
+        "respondió (sin deber) a: «¿Qué elemento químico tiene número atómico 1?»"
+      ]
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Existe un umbral plano que conserva ≥95% de positivas y rechaza ≥60% de negativas",
+      "ok": false,
+      "value": "0.45 → 37.5%",
+      "target": "≥ 60% rechazo",
+      "severity": "info",
+      "where": "ltm/retrieval.py · recall",
+      "hint": "Demuestra que un umbral 1D plano es insuficiente; la compuerta escalonada léxico-semántica resuelve la abstención real (ver check superior).",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "El ciclo de sueño (18 pasos) no lanza errores",
+      "ok": true,
+      "value": "0 error(es)",
+      "target": "0",
+      "severity": "alto",
+      "where": "ltm/tasks.py",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "recuperacion",
+      "name": "Hit@3 estable tras el ciclo de sueño",
+      "ok": true,
+      "value": "98.1% → 98.1%",
+      "target": "Δ ≥ −3 pp",
+      "severity": "alto",
+      "where": "ltm/tasks.py · split/merge/dedupe",
+      "hint": "El mantenimiento autónomo no debe degradar la recuperación (split/merge reubican células).",
+      "evidence": [
+        "MRR 0.960 → 0.960 (35s de mantenimiento)"
+      ]
+    },
+    {
+      "suite": "temporal",
+      "name": "El hecho obsoleto queda invalidado (superseded_by)",
+      "ok": true,
+      "value": "6/6",
+      "target": "≥ 83.0%",
+      "severity": "alto",
+      "where": "ltm/storage.py · _detect_temporal_supersession",
+      "hint": "Candidatos sin vecinos vectoriales caen a FTS5 con 'usuario*' y el hecho viejo puede quedar fuera del top-5; además _looks_like_temporal_update depende de frases en español.",
+      "evidence": [
+        "[profesion] invalidado=True actual_top1=False histórico=True · nuevo: «El usuario tiene un nuevo trabajo: es pr…» | rank_nuevo: final=4 léxico=None emb=4 | top3: El usuario tiene dos hermanos. ‖ El usuario practica senderismo los dom ‖ El usuario conduce un coche eléctrico."
+      ]
+    },
+    {
+      "suite": "temporal",
+      "name": "La consulta en presente devuelve el estado vigente en top-1",
+      "ok": true,
+      "value": "5/6",
+      "target": "≥ 83.0%",
+      "severity": "alto",
+      "where": "ltm/retrieval.py · filtros valid_until",
+      "hint": "",
+      "evidence": [
+        "[profesion] invalidado=True actual_top1=False histórico=True · nuevo: «El usuario tiene un nuevo trabajo: es pr…» | rank_nuevo: final=4 léxico=None emb=4 | top3: El usuario tiene dos hermanos. ‖ El usuario practica senderismo los dom ‖ El usuario conduce un coche eléctrico."
+      ]
+    },
+    {
+      "suite": "temporal",
+      "name": "La consulta histórica ('antes…') recupera el hecho antiguo",
+      "ok": true,
+      "value": "6/6",
+      "target": "≥ 83.0%",
+      "severity": "medio",
+      "where": "ltm/storage.py · _wants_history",
+      "hint": "",
+      "evidence": []
+    },
+    {
+      "suite": "temporal",
+      "name": "Falsas invalidaciones en hechos complementarios",
+      "ok": true,
+      "value": "0/2",
+      "target": "0",
+      "severity": "crítico",
+      "where": "ltm/storage.py · _detect_temporal_supersession",
+      "hint": "Invalidar un hecho válido es pérdida de información silenciosa.",
+      "evidence": []
+    }
+  ],
+  "locomo": {
+    "fuente": "parche13_20261028_230618_locomo.json",
+    "checks": [
+      {
+        "suite": "locomo",
+        "name": "Ingesta: fallos de extracción/almacenamiento",
+        "ok": true,
+        "value": "0",
+        "target": "0",
+        "severity": "medio",
+        "where": "ltm/ingestion.py · extract_facts / ltm/storage.py · store",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Ingesta: hechos por minuto",
+        "ok": true,
+        "value": "123.8",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/storage.py · store",
+        "hint": "0.3 llamadas LLM por hecho",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Ingesta: sustituciones temporales",
+        "ok": true,
+        "value": "16",
+        "target": "(auditar)",
+        "severity": "info",
+        "where": "ltm/storage.py · _detect_temporal_supersession",
+        "hint": "",
+        "evidence": [
+          "«El usuario está montando un estudio de baile.» ⇒ «El usuario (Jon) tiene un estudio de danza propio.»",
+          "«Jon está buscando un local para abrir un estudio d» ⇒ «Jon tiene un estudio de danza.»",
+          "«Jon está emprendiendo para convertir su pasión por» ⇒ «Jon transformó su pasión por el baile en un negoci»",
+          "«Jon transformó su pasión por el baile en un negoci» ⇒ «Jon perdió su empleo, lo que le impulsó a emprende»"
+        ]
+      },
+      {
+        "suite": "locomo",
+        "name": "Hechos redactados como 'el usuario'",
+        "ok": true,
+        "value": "67.5%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts (regla 1)",
+        "hint": "LoCoMo no tiene 'usuario': si es alto, la extracción asume un único interlocutor.",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Idioma de los hechos (es / en)",
+        "ok": true,
+        "value": "96.2% / 0.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Evidencia en el prompt (categorías 1-4)",
+        "ok": true,
+        "value": "79.0%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · recall / episodica.py",
+        "hint": "entre candidatos: 83.2%",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · P95 recuperación (recall + episódica)",
+        "ok": true,
+        "value": "115 ms",
+        "target": "≤ 1500 ms",
+        "severity": "medio",
+        "where": "vectores.py / ltm/retrieval.py / episodica.py",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Similitud top-1 P50 (con respuesta / adversariales)",
+        "ok": true,
+        "value": "0.72 / 0.67",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · _classify_relevance",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Hechos inyectados sin identidad ('el usuario')",
+        "ok": true,
+        "value": "1.5%",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts (regla 1)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Evidencia en puestos 7-18 (candidata, no inyectada)",
+        "ok": true,
+        "value": "219/1536",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · modo directo (top-6)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Lo recuperado llega al prompt real del agente",
+        "ok": true,
+        "value": "1986/1986",
+        "target": "todas",
+        "severity": "alto",
+        "where": "agente.py · _build_system",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · multi-salto",
+        "ok": true,
+        "value": "35.5% (n=282)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · temporal",
+        "ok": true,
+        "value": "63.2% (n=321)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · inferencia",
+        "ok": true,
+        "value": "40.6% (n=96)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · un salto",
+        "ok": true,
+        "value": "72.7% (n=841)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · referencia sin memoria",
+        "ok": true,
+        "value": "3.3% (n=30)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · fallos por causa",
+        "ok": true,
+        "value": "respuesta 321 · selección 56 · recuperación 208 · ingesta 0",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Invenciones: origen (episódica / hechos)",
+        "ok": true,
+        "value": "episódica 23 · ninguno claro 7 · hechos 1",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "agente.py · _build_system",
+        "hint": "posibles etiquetas erróneas: 2",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · correctas",
+        "ok": true,
+        "value": "59.7% → 61.9% (n=1540 · mejoran 79 · empeoran 45 · p=0.003)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "agente.py · BASE_PROMPT",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · inventa",
+        "ok": true,
+        "value": "6.3% → 7.0% (n=446 · mejoran 8 · empeoran 11 · p=0.648)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "agente.py · BASE_PROMPT",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Inventa con / sin hechos de 'el usuario' en contexto",
+        "ok": true,
+        "value": "sí 11.9% (n=42) · no 6.4% (n=404)",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Fallos con evidencia en puestos 7-18",
+        "ok": true,
+        "value": "95/585",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · modo directo (top-6)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "OBJETIVO LoCoMo · correctas (categorías 1-4)",
+        "ok": false,
+        "value": "61.9% [59.4%–64.3%]",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "ver 'fallos por causa'",
+        "hint": "n=1540 · comparable en orden de magnitud con el J publicado",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "OBJETIVO LoCoMo · inventa (adversariales)",
+        "ok": false,
+        "value": "7.0% [4.9%–9.7%]",
+        "target": "≤ 5.0%",
+        "severity": "alto",
+        "where": "agente.py · BASE_PROMPT / ltm/retrieval.py · compuerta",
+        "hint": "n=446",
+        "evidence": [
+          "«What is Caroline's hand-painted bowl a reminder of» → «Caroline's hand-painted bowl is a reminder of **art and self»",
+          "«What precautionary sign did Caroline see at the ca» → «The precautionary sign Caroline saw at the café stated that »",
+          "«What does Jon's tattoo symbolize?» → «Jon's tattoo symbolizes **freedom**, specifically the idea o»",
+          "«What did Gina receive from a dance contest?» → «Gina received a trophy from a dance contest. This trophy ser»"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,829 @@
+{
+ "_parche": "[PARCHE27] preguntas escritas a mano sobre los dos artículos de Wikipedia (CC BY-SA 4.0) cargados en el cartucho «santander»",
+ "fuentes": [
+  "https://es.wikipedia.org/wiki/Cabo_Machichaco_(vapor)",
+  "https://es.wikipedia.org/wiki/Incendio_de_Santander_de_1941"
+ ],
+ "preguntas": [
+  {
+   "tipo": "directa",
+   "q": "¿Dónde se construyó el vapor Cabo Machichaco?",
+   "ref": "En Newcastle (Reino Unido).",
+   "claves": [
+    "newcastle"
+   ],
+   "doc": "machichaco",
+   "id": "s01"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿En qué año se construyó el Cabo Machichaco?",
+   "ref": "En 1882.",
+   "claves": [
+    "1882"
+   ],
+   "doc": "machichaco",
+   "id": "s02"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Cómo se llamaba inicialmente el barco Cabo Machichaco?",
+   "ref": "Benisaf.",
+   "claves": [
+    "benisaf"
+   ],
+   "doc": "machichaco",
+   "id": "s03"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué compañía adquirió el barco en 1885?",
+   "ref": "La Compañía Ybarra.",
+   "claves": [
+    "ybarra"
+   ],
+   "doc": "machichaco",
+   "id": "s04"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Entre qué dos ciudades hacía el Cabo Machichaco su servicio de cabotaje?",
+   "ref": "Entre Bilbao y Sevilla (con primera escala en Santander).",
+   "claves": [
+    "bilbao",
+    "sevilla"
+   ],
+   "doc": "machichaco",
+   "id": "s05"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿Qué día explotó el Cabo Machichaco en Santander?",
+   "ref": "El 3 de noviembre de 1893.",
+   "claves": [
+    "1893"
+   ],
+   "doc": "machichaco",
+   "id": "s06"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Cómo se llamaba el barco gemelo del Cabo Machichaco y qué le ocurrió?",
+   "ref": "Cabo Mayor; naufragó en las rocas de Cabo Mayor en 1886.",
+   "claves": [
+    "cabo mayor"
+   ],
+   "doc": "machichaco",
+   "id": "s07"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Dónde pasó la cuarentena el Cabo Machichaco antes de atracar, y por qué?",
+   "ref": "En el lazareto de la isla de Pedrosa, porque había casos de cólera en Bilbao.",
+   "claves": [
+    "pedrosa"
+   ],
+   "doc": "machichaco",
+   "id": "s08"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿En qué muelle estaba atracado el Cabo Machichaco cuando explotó?",
+   "ref": "En el muelle número 2 de Maliaño, frente a la actual calle Calderón de la Barca.",
+   "claves": [
+    "maliano"
+   ],
+   "doc": "machichaco",
+   "id": "s09"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántas toneladas de dinamita transportaba el Cabo Machichaco?",
+   "ref": "Algo más de 51 toneladas.",
+   "claves": [
+    "51"
+   ],
+   "doc": "machichaco",
+   "id": "s10"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿De dónde procedía la dinamita del Cabo Machichaco?",
+   "ref": "De Galdácano.",
+   "claves": [
+    "galdacano"
+   ],
+   "doc": "machichaco",
+   "id": "s11"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántas cajas de la dinamita tenían como destino Santander?",
+   "ref": "Veinte cajas (el resto iba a los puertos del sur de España).",
+   "claves": [
+    "veinte|20 cajas"
+   ],
+   "doc": "machichaco",
+   "id": "s12"
+  },
+  {
+   "tipo": "directa",
+   "q": "Según el reglamento del puerto, ¿dónde debían cargar y descargar dinamita los barcos?",
+   "ref": "En el fondeadero de la Magdalena o al final de los muelles de Maliaño.",
+   "claves": [
+    "magdalena"
+   ],
+   "doc": "machichaco",
+   "id": "s13"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿A qué hora recibieron las autoridades el aviso del incendio a bordo del Cabo Machichaco?",
+   "ref": "Hacia la una y media de la tarde.",
+   "claves": [
+    "una y media|13:30|13.30"
+   ],
+   "doc": "machichaco",
+   "id": "s14"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué provocó el incendio a bordo del Cabo Machichaco?",
+   "ref": "La explosión de una bombona de vidrio con ácido sulfúrico.",
+   "claves": [
+    "sulfurico"
+   ],
+   "doc": "machichaco",
+   "id": "s15"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿A qué hora se supo qué llevaba el Cabo Machichaco en sus bodegas?",
+   "ref": "A las cuatro de la tarde.",
+   "claves": [
+    "cuatro de la tarde|16:00|las cuatro"
+   ],
+   "doc": "machichaco",
+   "id": "s16"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué estalló primero en el Cabo Machichaco, y cuánto después de saberse su carga?",
+   "ref": "Las dos bodegas de proa, una hora después de saberse el contenido.",
+   "claves": [
+    "proa"
+   ],
+   "doc": "machichaco",
+   "id": "s17"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántos tripulantes del vapor Alfonso XIII murieron en la explosión?",
+   "ref": "32 tripulantes, incluido su capitán.",
+   "claves": [
+    "32"
+   ],
+   "doc": "machichaco",
+   "id": "s18"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién era el capitán del vapor Alfonso XIII?",
+   "ref": "Francisco Jaureguizar y Cagigal.",
+   "claves": [
+    "jaureguizar"
+   ],
+   "doc": "machichaco",
+   "id": "s19"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿De qué viaje volvía el Alfonso XIII cuando llegó a Santander?",
+   "ref": "De su primer viaje a Cuba (había llegado el día anterior).",
+   "claves": [
+    "cuba"
+   ],
+   "doc": "machichaco",
+   "id": "s20"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué barcos extranjeros ayudaron a apagar el incendio del Cabo Machichaco?",
+   "ref": "El barco francés Galindo y el inglés Eden.",
+   "claves": [
+    "galindo",
+    "eden"
+   ],
+   "doc": "machichaco",
+   "id": "s21"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿A qué naviera pertenecía el transatlántico Catalina?",
+   "ref": "A la Naviera Pinillos.",
+   "claves": [
+    "pinillos"
+   ],
+   "doc": "machichaco",
+   "id": "s22"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué personaje de novela era tripulante del Catalina y quién escribió esa novela?",
+   "ref": "Pachín González, protagonista de la novela homónima de José María de Pereda.",
+   "claves": [
+    "pachin"
+   ],
+   "doc": "machichaco",
+   "id": "s23"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Hasta qué localidad llegó un calabrote lanzado por la explosión, y a qué distancia?",
+   "ref": "Hasta Peñacastillo, a ocho kilómetros, donde mató a una persona.",
+   "claves": [
+    "penacastillo"
+   ],
+   "doc": "machichaco",
+   "id": "s24"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántos muertos y heridos causó la explosión del Cabo Machichaco?",
+   "ref": "590 muertos y 525 heridos (otras fuentes citan unos 2000 heridos).",
+   "claves": [
+    "590"
+   ],
+   "doc": "machichaco",
+   "id": "s25"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántos habitantes censados tenía Santander en 1893?",
+   "ref": "50 000.",
+   "claves": [
+    "50000|50 000|cincuenta mil"
+   ],
+   "doc": "machichaco",
+   "id": "s26"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué gobernador civil murió en la explosión y dónde apareció su bastón?",
+   "ref": "Manuel Somoza de la Peña; su bastón apareció en la playa de San Martín.",
+   "claves": [
+    "somoza"
+   ],
+   "doc": "machichaco",
+   "id": "s27"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué historiador defendió la actuación del capitán del Cabo Machichaco?",
+   "ref": "Rafael González Echegaray.",
+   "claves": [
+    "echegaray"
+   ],
+   "doc": "machichaco",
+   "id": "s28"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Cómo se llamaba el capitán del Cabo Machichaco?",
+   "ref": "Facundo Léniz Maza.",
+   "claves": [
+    "leniz"
+   ],
+   "doc": "machichaco",
+   "id": "s29"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué calle quedó con casi todas sus casas destruidas por la onda expansiva?",
+   "ref": "La calle Méndez Núñez.",
+   "claves": [
+    "mendez nunez"
+   ],
+   "doc": "machichaco",
+   "id": "s30"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿Cuándo fue la segunda explosión del Cabo Machichaco y cuántos murieron en ella?",
+   "ref": "El 21 de marzo de 1894; murieron quince operarios.",
+   "claves": [
+    "1894"
+   ],
+   "doc": "machichaco",
+   "id": "s31"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué entidades surgieron en la recuperación de Santander tras la explosión, y en qué años?",
+   "ref": "El Monte de Piedad en 1898 (hoy Fundación Caja Cantabria) y el Banco Mercantil en 1907.",
+   "claves": [
+    "monte de piedad"
+   ],
+   "doc": "machichaco",
+   "id": "s32"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién proyectó el primer monumento a las víctimas del Machichaco y en qué año?",
+   "ref": "El arquitecto municipal Valentín Ramón Lavín Casalís, en 1896.",
+   "claves": [
+    "lavin"
+   ],
+   "doc": "machichaco",
+   "id": "s33"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién realizó la figura de bronce de la mujer doliente del monumento?",
+   "ref": "El escultor ovetense Cipriano Folgueras Doiztúa.",
+   "claves": [
+    "folgueras"
+   ],
+   "doc": "machichaco",
+   "id": "s34"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿En qué año se creó la Real Asociación Machichaco?",
+   "ref": "En 1958.",
+   "claves": [
+    "1958"
+   ],
+   "doc": "machichaco",
+   "id": "s35"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién compuso la obra «Cabo Machichaco» y cuándo se estrenó?",
+   "ref": "Borja Ordóñez García; se estrenó el 3 de noviembre de 2018 (125 aniversario).",
+   "claves": [
+    "ordonez"
+   ],
+   "doc": "machichaco",
+   "id": "s36"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién ejecutó el monumento del cementerio de Ciriego?",
+   "ref": "A. García Cabezas.",
+   "claves": [
+    "cabezas"
+   ],
+   "doc": "machichaco",
+   "id": "s37"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿Desde qué año venía sufriendo Santander una crisis antes de la explosión?",
+   "ref": "Desde 1875 (prohibición de exportar trigo y harina).",
+   "claves": [
+    "1875"
+   ],
+   "doc": "machichaco",
+   "id": "s38"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿Cuándo ocurrió el gran incendio de Santander?",
+   "ref": "En la madrugada del 15 al 16 de febrero de 1941.",
+   "claves": [
+    "1941"
+   ],
+   "doc": "incendio1941",
+   "id": "s39"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿En qué calle y número se inició el incendio de 1941?",
+   "ref": "En el número 20 de la calle Cádiz.",
+   "claves": [
+    "cadiz"
+   ],
+   "doc": "incendio1941",
+   "id": "s40"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Por qué se conoce popularmente al incendio de 1941 como «el andaluz»?",
+   "ref": "Porque empezó en la calle Cádiz y las llamas se frenaron a la altura de la calle Sevilla.",
+   "claves": [
+    "sevilla"
+   ],
+   "doc": "incendio1941",
+   "id": "s41"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Qué rachas de viento se calculan durante el incendio de 1941?",
+   "ref": "Superiores a 180 kilómetros por hora.",
+   "claves": [
+    "180"
+   ],
+   "doc": "incendio1941",
+   "id": "s42"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué se cree que originó el incendio de 1941?",
+   "ref": "El huracán derribó una torre de la luz cuyos cables hicieron cortocircuito.",
+   "claves": [
+    "cortocircuito"
+   ],
+   "doc": "incendio1941",
+   "id": "s43"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿De qué ciudades llegaron bomberos para ayudar en el incendio de 1941?",
+   "ref": "Bilbao, San Sebastián, Palencia, Burgos, Oviedo, Gijón, Avilés y Madrid.",
+   "claves": [
+    "aviles|gijon|palencia"
+   ],
+   "doc": "incendio1941",
+   "id": "s44"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién era el gobernador que difundió un Boletín Oficial de Información tras el incendio de 1941?",
+   "ref": "Carlos Ruiz García.",
+   "claves": [
+    "ruiz garcia"
+   ],
+   "doc": "incendio1941",
+   "id": "s45"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué barco llegó con suministros y comida tras el incendio de 1941?",
+   "ref": "El crucero Canarias.",
+   "claves": [
+    "canarias"
+   ],
+   "doc": "incendio1941",
+   "id": "s46"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Dónde se extinguió el último foco del incendio de 1941, y cuántos días después del inicio?",
+   "ref": "En una casa de la calle Cuesta, quince días después.",
+   "claves": [
+    "cuesta"
+   ],
+   "doc": "incendio1941",
+   "id": "s47"
+  },
+  {
+   "tipo": "cifra",
+   "q": "Según «el incendio en cifras», ¿cuántos edificios se destruyeron?",
+   "ref": "377 edificios (en otra parte del texto se citan unos 400).",
+   "claves": [
+    "377"
+   ],
+   "doc": "incendio1941",
+   "id": "s48"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántas viviendas se perdieron en el incendio de 1941?",
+   "ref": "1783 viviendas.",
+   "claves": [
+    "1783"
+   ],
+   "doc": "incendio1941",
+   "id": "s49"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántas calles resultaron afectadas y qué superficie arrasó el incendio?",
+   "ref": "37 calles y 14 hectáreas.",
+   "claves": [
+    "37",
+    "14 hectareas"
+   ],
+   "doc": "incendio1941",
+   "id": "s50"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántos comercios destruyó el incendio de 1941?",
+   "ref": "508 comercios (el 90 % de los locales comerciales).",
+   "claves": [
+    "508"
+   ],
+   "doc": "incendio1941",
+   "id": "s51"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Quién fue la única víctima mortal del incendio de 1941 y dónde murió?",
+   "ref": "Julián Sánchez García, un bombero madrileño; murió en el hospital de Valdecilla.",
+   "claves": [
+    "julian sanchez"
+   ],
+   "doc": "incendio1941",
+   "id": "s52"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántas personas resultaron heridas en el incendio de 1941?",
+   "ref": "115.",
+   "claves": [
+    "115 personas|115 heridos|115 resultaron"
+   ],
+   "doc": "incendio1941",
+   "id": "s53"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿En cuánto se valoraron oficialmente las pérdidas del incendio de 1941?",
+   "ref": "85 312 506 pesetas.",
+   "claves": [
+    "85312506|85 312 506"
+   ],
+   "doc": "incendio1941",
+   "id": "s54"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Qué población de hecho tenía Santander en 1940?",
+   "ref": "101 793 habitantes (INE).",
+   "claves": [
+    "101793|101 793"
+   ],
+   "doc": "incendio1941",
+   "id": "s55"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué periódico perdió su sede en el incendio de 1941?",
+   "ref": "El Diario Montañés.",
+   "claves": [
+    "montanes"
+   ],
+   "doc": "incendio1941",
+   "id": "s56"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué nueva calle comercial se abrió en la reconstrucción tras el incendio?",
+   "ref": "La calle de Juan de Herrera.",
+   "claves": [
+    "juan de herrera"
+   ],
+   "doc": "incendio1941",
+   "id": "s57"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántos metros cuadrados de suelo quedaron libres tras el incendio?",
+   "ref": "115 421 m².",
+   "claves": [
+    "115421|115 421"
+   ],
+   "doc": "incendio1941",
+   "id": "s58"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿En qué año estaba prácticamente terminada la reconstrucción y con qué resultado?",
+   "ref": "En 1954, con cinco edificios públicos y 170 privados.",
+   "claves": [
+    "1954"
+   ],
+   "doc": "incendio1941",
+   "id": "s59"
+  },
+  {
+   "tipo": "cifra",
+   "q": "¿Cuántas viviendas tenía el grupo Pedro Velarde?",
+   "ref": "348.",
+   "claves": [
+    "348"
+   ],
+   "doc": "incendio1941",
+   "id": "s60"
+  },
+  {
+   "tipo": "directa",
+   "q": "¿Qué tejeras se incautaron tras el incendio de 1941?",
+   "ref": "La Covadonga, Trascueto y Agustín García.",
+   "claves": [
+    "trascueto"
+   ],
+   "doc": "incendio1941",
+   "id": "s61"
+  },
+  {
+   "tipo": "combinar",
+   "q": "¿Cuántos años pasaron entre la explosión del Cabo Machichaco y el gran incendio de Santander?",
+   "ref": "48 años (1893 y 1941).",
+   "claves": [
+    "1893",
+    "1941"
+   ],
+   "doc": "ambos",
+   "id": "s62"
+  },
+  {
+   "tipo": "combinar",
+   "q": "¿Cuál de las dos catástrofes de Santander causó más muertos?",
+   "ref": "La explosión del Cabo Machichaco de 1893 (590 muertos frente a 1 en el incendio de 1941).",
+   "claves": [
+    "590"
+   ],
+   "doc": "ambos",
+   "id": "s63"
+  },
+  {
+   "tipo": "combinar",
+   "q": "¿Qué calle de Santander aparece tanto en la explosión de 1893 como en el incendio de 1941?",
+   "ref": "La calle Calderón de la Barca (el muelle del Machichaco estaba frente a ella y fue el límite sur del incendio).",
+   "claves": [
+    "calderon de la barca"
+   ],
+   "doc": "ambos",
+   "id": "s64"
+  },
+  {
+   "tipo": "combinar",
+   "q": "¿En cuál de las dos catástrofes murió un bombero madrileño?",
+   "ref": "En el incendio de 1941 (Julián Sánchez García).",
+   "claves": [
+    "julian sanchez"
+   ],
+   "doc": "ambos",
+   "id": "s65"
+  },
+  {
+   "tipo": "combinar",
+   "q": "¿Qué aniversarios de cada catástrofe se celebraron, y en qué años?",
+   "ref": "El 125 aniversario del Machichaco en 2018 y el 75 aniversario del incendio en 2016.",
+   "claves": [
+    "2018",
+    "2016"
+   ],
+   "doc": "ambos",
+   "id": "s66"
+  },
+  {
+   "tipo": "fecha",
+   "q": "¿Qué día llegó el crucero Canarias a Santander?",
+   "ref": "La noche del 18 de febrero de 1941.",
+   "claves": [
+    "canarias"
+   ],
+   "doc": "incendio1941",
+   "id": "s67"
+  },
+  {
+   "tipo": "combinar",
+   "q": "¿Cuánto tiempo pasó entre la primera y la segunda explosión del Cabo Machichaco?",
+   "ref": "Unos cuatro meses y medio (del 3 de noviembre de 1893 al 21 de marzo de 1894).",
+   "claves": [
+    "1894"
+   ],
+   "doc": "machichaco",
+   "id": "s68"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Qué novela escribió José María de Pereda sobre el incendio de 1941?",
+   "trampa": "Pachín González",
+   "nota": "Pachín González trata del Machichaco (1896); el texto no atribuye a Pereda nada sobre 1941.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s69"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Qué barco francés ayudó a apagar el incendio de 1941?",
+   "trampa": "Galindo",
+   "nota": "El Galindo ayudó en 1893.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s70"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Qué gobernador civil murió en el incendio de 1941?",
+   "trampa": "Manuel Somoza de la Peña",
+   "nota": "Somoza murió en 1893; en 1941 solo murió un bombero.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s71"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿En qué hospital murió el capitán Facundo Léniz Maza?",
+   "trampa": "Valdecilla",
+   "nota": "El texto no lo dice; Valdecilla es del bombero de 1941.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s72"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Qué arquitecto proyectó el monumento a las víctimas del incendio de 1941?",
+   "trampa": "Valentín Lavín Casalís",
+   "nota": "Lavín proyectó el monumento del Machichaco.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s73"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Qué compositor estrenó una obra en el 75 aniversario del incendio de 1941?",
+   "trampa": "Borja Ordóñez García",
+   "nota": "Su obra fue para el 125 aniversario del Machichaco.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s74"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿En qué año se fundó la Real Asociación del Incendio de 1941?",
+   "trampa": "1958",
+   "nota": "La de 1958 es la Real Asociación Machichaco.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s75"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿De qué ciudad procedía el ácido sulfúrico que llevaba el Cabo Machichaco?",
+   "trampa": "Galdácano",
+   "nota": "Galdácano es la procedencia de la dinamita.",
+   "claves": [],
+   "doc": "machichaco",
+   "id": "s76"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Cuántos heridos causó la segunda explosión del Cabo Machichaco en 1894?",
+   "trampa": "quince",
+   "nota": "Solo consta que murieron quince operarios.",
+   "claves": [],
+   "doc": "machichaco",
+   "id": "s77"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Cuántos bomberos de Bilbao murieron en la explosión del Cabo Machichaco?",
+   "trampa": "un número concreto",
+   "nota": "El texto no lo dice.",
+   "claves": [],
+   "doc": "machichaco",
+   "id": "s78"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Qué crucero llevó suministros a Santander después de la explosión de 1893?",
+   "trampa": "Canarias",
+   "nota": "El Canarias llegó en 1941.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s79"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Cuántas toneladas de dinamita provocaron el incendio de 1941?",
+   "trampa": "51",
+   "nota": "El incendio de 1941 lo provocó el viento y un cortocircuito.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s80"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿A qué velocidad soplaba el viento durante la explosión del Cabo Machichaco?",
+   "trampa": "180 km/h",
+   "nota": "Las rachas de 180 km/h son del incendio de 1941.",
+   "claves": [],
+   "doc": "ambos",
+   "id": "s81"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Quién era el capitán del crucero Canarias en 1941?",
+   "trampa": "un nombre concreto",
+   "nota": "El texto no lo dice.",
+   "claves": [],
+   "doc": "incendio1941",
+   "id": "s82"
+  },
+  {
+   "tipo": "trampa",
+   "q": "¿Cuántos tripulantes del Catalina murieron en la explosión del Cabo Machichaco?",
+   "trampa": "32",
+   "nota": "Los 32 eran del Alfonso XIII.",
+   "claves": [],
+   "doc": "machichaco",
+   "id": "s83"
+  }
+ ]
+}

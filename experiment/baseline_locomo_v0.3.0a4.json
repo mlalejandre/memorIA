@@ -1,0 +1,447 @@
+{
+  "_parche": "[PARCHE25] línea base REPRODUCIBLE de LoCoMo de v0.3.0a4 (T=0, 1 petición a la vez, sin caché de prompt, juez de un voto; las respuestas y veredictos están en experiment/locomo_cache/banco.sqlite)",
+  "version": "0.3.0a4",
+  "config": {
+    "RETRIEVAL_PROFILE": "embeddings",
+    "RERANK_MODE": "off",
+    "LTM_DIRECT_TOP_K": "10",
+    "EPI_PROMPT_K": "20",
+    "EPI_LOOKUP_K": "22",
+    "LTM_DECOMPOSE": "False",
+    "EPI_DIVERSITY": "off",
+    "LTM_SECOND_PASS": "False",
+    "ANSWER_DIRECT": "False",
+    "THINKING": "False",
+    "LLM_CACHE_PROMPT": "True",
+    "AGENT_THINK": "off",
+    "REMOTE_MODEL_ALIAS": "nail-35b",
+    "EMB_MODEL_ALIAS": "bge-m3",
+    "SERVER_IP": "192.168.1.200"
+  },
+  "fecha": "2026-10-30T23:11:16",
+  "medicion": {
+    "agente": {
+      "url": "http://192.168.1.200:8088",
+      "model": "/mnt/IA/models/nail-35b/Nail-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "build": "b10828-3ad1ba733",
+      "slots": 2,
+      "n_ctx": 40960,
+      "id": "b175b7a77133"
+    },
+    "juez": {
+      "url": "http://192.168.1.200:8087",
+      "model": "/mnt/IA/models/nail-35b/Nail-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf",
+      "build": "b10828-3ad1ba733",
+      "slots": 1,
+      "n_ctx": 32768,
+      "id": "b175b7a77133"
+    },
+    "temp": 0.0,
+    "votos": 1,
+    "gen": "w1cp0",
+    "fixed_now": "29/10/2026 12:00",
+    "think_mode": "off"
+  },
+  "reproducir": "HMEM_LOCOMO_CONV=all python3 benchmarks/prueba.py --live --only locomo",
+  "locomo": {
+    "fuente": "parche25_20261030_205120_L_locomo.json",
+    "resultados": "resultados_20261030_184038.jsonl",
+    "checks": [
+      {
+        "suite": "locomo",
+        "name": "Ingesta: fallos de extracción/almacenamiento",
+        "ok": true,
+        "value": "0",
+        "target": "0",
+        "severity": "medio",
+        "where": "ltm/ingestion.py · extract_facts / ltm/storage.py · store",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Ingesta: hechos por minuto",
+        "ok": true,
+        "value": "123.8",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/storage.py · store",
+        "hint": "0.3 llamadas LLM por hecho",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Ingesta: sustituciones temporales",
+        "ok": true,
+        "value": "16",
+        "target": "(auditar)",
+        "severity": "info",
+        "where": "ltm/storage.py · _detect_temporal_supersession",
+        "hint": "",
+        "evidence": [
+          "«El usuario está montando un estudio de baile.» ⇒ «El usuario (Jon) tiene un estudio de danza propio.»",
+          "«Jon está buscando un local para abrir un estudio d» ⇒ «Jon tiene un estudio de danza.»",
+          "«Jon está emprendiendo para convertir su pasión por» ⇒ «Jon transformó su pasión por el baile en un negoci»",
+          "«Jon transformó su pasión por el baile en un negoci» ⇒ «Jon perdió su empleo, lo que le impulsó a emprende»"
+        ]
+      },
+      {
+        "suite": "locomo",
+        "name": "Hechos redactados como 'el usuario'",
+        "ok": true,
+        "value": "67.5%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts (regla 1)",
+        "hint": "LoCoMo no tiene 'usuario': si es alto, la extracción asume un único interlocutor.",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Idioma de los hechos (es / en)",
+        "ok": true,
+        "value": "96.2% / 0.2%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Prompt de sistema (mediana / P95, caracteres)",
+        "ok": true,
+        "value": "7188 / 8223",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "agente.py · _build_system",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Evidencia en el prompt (categorías 1-4)",
+        "ok": true,
+        "value": "87.4%",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · recall / episodica.py",
+        "hint": "entre candidatos: 89.6%",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · P95 recuperación (recall + episódica)",
+        "ok": true,
+        "value": "499 ms",
+        "target": "≤ 1500 ms",
+        "severity": "medio",
+        "where": "vectores.py / ltm/retrieval.py / episodica.py",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Similitud top-1 P50 (con respuesta / adversariales)",
+        "ok": true,
+        "value": "0.72 / 0.67",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · _classify_relevance",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Hechos inyectados sin identidad ('el usuario')",
+        "ok": true,
+        "value": "1.5%",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts (regla 1)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Evidencia en puestos 7-18 (candidata, no inyectada)",
+        "ok": true,
+        "value": "219/1536",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · modo directo (top-6)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Lo recuperado llega al prompt real del agente",
+        "ok": true,
+        "value": "1986/1986",
+        "target": "todas",
+        "severity": "alto",
+        "where": "agente.py · _build_system",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Sesiones distintas entre los episodios del prompt (media)",
+        "ok": true,
+        "value": "12.2",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "ltm/explorer.py · search_episodes",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Banco: respuestas y juicios reutilizados de la caché",
+        "ok": true,
+        "value": "2016/2016 · 2016/2016",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "benchmarks/locomo.py",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Servidor del agente / del juez",
+        "ok": true,
+        "value": "b175b7a77133 / b175b7a77133",
+        "target": "(huella)",
+        "severity": "info",
+        "where": "",
+        "hint": "agente: Nail-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf · b10828-3ad1ba733 · slots 2 · ctx 40960 · juez: Nail-Qwen3.6-35B-A3B-UD-Q4_K_S.gguf · b10828-3ad1ba733 · slots 1 · ctx 32768",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Tiempo de respuesta del agente (mediana / P95)",
+        "ok": true,
+        "value": "2.06 s / 3.48 s",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "agente.py · _build_system (tamaño del prompt)",
+        "hint": "1 en paralelo",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Longitud de la respuesta (mediana / P95, caracteres)",
+        "ok": true,
+        "value": "417 / 1136",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "agente.py · DIRECT_RULE (ANSWER_DIRECT)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · multi-salto",
+        "ok": true,
+        "value": "47.9% (n=282)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · temporal",
+        "ok": true,
+        "value": "68.2% (n=321)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · inferencia",
+        "ok": true,
+        "value": "41.7% (n=96)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · correctas · un salto",
+        "ok": true,
+        "value": "80.6% (n=841)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · referencia sin memoria",
+        "ok": true,
+        "value": "3.3% (n=30)",
+        "target": "(observación)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "LoCoMo · fallos por causa",
+        "ok": true,
+        "value": "respuesta 313 · selección 28 · recuperación 125 · ingesta 0",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Invenciones: origen (episódica / hechos)",
+        "ok": true,
+        "value": "episódica 23 · ninguno claro 2 · ? 1 · hechos 1",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "agente.py · _build_system",
+        "hint": "posibles etiquetas erróneas: 7",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · correctas",
+        "ok": true,
+        "value": "69.6% → 69.6% (n=1540 · mejoran 0 · empeoran 0 · p=1.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "agente.py · BASE_PROMPT",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · inventa",
+        "ok": true,
+        "value": "6.1% → 6.1% (n=446 · mejoran 0 · empeoran 0 · p=1.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "agente.py · BASE_PROMPT",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · multi-salto",
+        "ok": true,
+        "value": "47.9% → 47.9% (n=282 · mejoran 0 · empeoran 0 · p=1.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · temporal",
+        "ok": true,
+        "value": "68.2% → 68.2% (n=321 · mejoran 0 · empeoran 0 · p=1.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · inferencia",
+        "ok": true,
+        "value": "41.7% → 41.7% (n=96 · mejoran 0 · empeoran 0 · p=1.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Comparado con la base · un salto",
+        "ok": true,
+        "value": "80.6% → 80.6% (n=841 · mejoran 0 · empeoran 0 · p=1.000)",
+        "target": "(decisión)",
+        "severity": "info",
+        "where": "",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Base comparable (huella)",
+        "ok": true,
+        "value": "sí",
+        "target": "(aviso)",
+        "severity": "info",
+        "where": "",
+        "hint": "misma huella de servidor, juez y medición",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Inventa con / sin hechos de 'el usuario' en contexto",
+        "ok": true,
+        "value": "sí 11.9% (n=42) · no 5.4% (n=404)",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/ingestion.py · extract_facts",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "Fallos con evidencia en puestos 7-18",
+        "ok": true,
+        "value": "81/466",
+        "target": "(diagnóstico)",
+        "severity": "info",
+        "where": "ltm/retrieval.py · modo directo (top-6)",
+        "hint": "",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "OBJETIVO LoCoMo · correctas (categorías 1-4)",
+        "ok": false,
+        "value": "69.6% [67.3%–71.9%]",
+        "target": "≥ 95.0%",
+        "severity": "alto",
+        "where": "ver 'fallos por causa'",
+        "hint": "n=1540 · comparable en orden de magnitud con el J publicado",
+        "evidence": []
+      },
+      {
+        "suite": "locomo",
+        "name": "OBJETIVO LoCoMo · inventa (adversariales)",
+        "ok": false,
+        "value": "6.1% [4.2%–8.7%]",
+        "target": "≤ 5.0%",
+        "severity": "alto",
+        "where": "agente.py · BASE_PROMPT / ltm/retrieval.py · compuerta",
+        "hint": "n=446",
+        "evidence": [
+          "«What is Caroline's hand-painted bowl a reminder of» → «Caroline's hand-painted bowl is a reminder of **art and self»",
+          "«What does Caroline say running has been great for?» → «Caroline says running has been great for her **mental health»",
+          "«What precautionary sign did Caroline see at the ca» → «The sign Caroline saw at the café stated that someone was no»",
+          "«What did Gina receive from a dance contest?» → «Gina received a trophy from a dance contest. She described i»"
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,10 @@
+[
+  {
+    "pregunta": "¿Cuál es la pieza básica que filtra la sangre en el riñón?",
+    "esperado": ["nefrona"]
+  },
+  {
+    "pregunta": "¿Cómo se llama mi mascota?",
+    "esperado": ["perro", "gato"]
+  }
+]

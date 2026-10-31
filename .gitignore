@@ -2,7 +2,6 @@
 # Recuerdos y Datos Personales (CRÍTICO)
 # ==========================================
 body/memoria/
-experiment/
 interfaz/memoria_store.json
 *.tar.gz
 

@@ -1,0 +1,268 @@
+[
+  {
+    "celula_id": "0000987-4fc1de2d2805",
+    "celula": "La nefrona regula el equilibrio hidroelectrolítico y el pH sanguíneo mediante procesos de transporte activo y pasivo a través de sus segmentos tubulares.",
+    "pregunta": "¿Qué mecanismos celulares permiten al filtro renal mantener la homeostasis de sales, agua y acidez en la sangre?",
+    "clave": "transporte activo y pasivo",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-817cce3aedd8",
+    "celula": "La arteria renal entra en el riñón a través del hilio.",
+    "pregunta": "¿Por dónde acciona el vaso sanguíneo principal que irriga el riñón para ingresar al órgano?",
+    "clave": "hilio",
+    "leak": 0.1
+  },
+  {
+    "celula_id": "0000072-b6a7f2ffbae7",
+    "celula": "La papila renal, que es el extremo de las pirámides renales, se proyecta en el espacio de la pelvis renal.",
+    "pregunta": "¿Qué estructura anatómica del riñón se encuentra en la punta de las pirámides y vierte su contenido hacia la cavidad central?",
+    "clave": "papila renal",
+    "leak": 0.09
+  },
+  {
+    "celula_id": "0000104-667c63e4d2ad",
+    "celula": "En los capilares glomerulares de cada nefrona se produce la filtración de líquido y solutos para comenzar la formación de orina.",
+    "pregunta": "¿Cuál es el primer paso fisiológico en la generación de orina y dónde ocurre exactamente?",
+    "clave": "capilares glomerulares",
+    "leak": 0.11
+  },
+  {
+    "celula_id": "0000036-d3225d5cfbf0",
+    "celula": "El número de nefronas se reduce gradualmente con el envejecimiento, lesión o enfermedad debido a que no se pueden regenerar.",
+    "pregunta": "¿Por qué la capacidad renal disminuye progresivamente con la edad o tras sufrir daños?",
+    "clave": "no se pueden regenerar",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-631670f11262",
+    "celula": "La nefrona es la unidad estructural y funcional básica del riñón.",
+    "pregunta": "¿Cuál es el componente fundamental que permite al órgano encargado de filtrar la sangre llevar a cabo sus funciones?",
+    "clave": "nefrona",
+    "leak": 0.09
+  },
+  {
+    "celula_id": "0000112-6a2c7343c980",
+    "celula": "La vasculatura renal se ramifica desde la arteria renal hasta formar arterias interlobulares, arciformes, interlobulillares y arteriolas aferentes, que terminan en los capilares glomerulares.",
+    "pregunta": "¿Cuál es la secuencia de vasos sanguíneos que siguen las arterias renales antes de llegar a los capilares de los corpúsculos de Malpighi?",
+    "clave": "arterias interlobulares, arciformes, interlobulillares y arteriolas aferentes",
+    "leak": 0.25
+  },
+  {
+    "celula_id": "0000036-42f2cf8614f6",
+    "celula": "Al túbulo distal le sigue el túbulo colector cortical.",
+    "pregunta": "¿Qué estructura anatómica recibe el flujo de fluido inmediatamente después de que este abandona el segmento distal del nefrona?",
+    "clave": "túbulo colector cortical",
+    "leak": 0.08
+  },
+  {
+    "celula_id": "0001296-276a0edf8814",
+    "celula": "Las células yuxtaglomerulares del riñón secretan renina en respuesta a la disminución de la presión de perfusión renal, la disminución de la carga de sodio en la mácula densa o la estimulación simpática.",
+    "pregunta": "¿Qué mecanismo celular específico en el riñón se activa cuando baja la presión arterial, hay menos sodio filtrado o hay más actividad del sistema nervioso simpático?",
+    "clave": "renina",
+    "leak": 0.33
+  },
+  {
+    "celula_id": "0000036-ce65d41a2f43",
+    "celula": "Los riñones se extienden desde la altura de la última vértebra dorsal hasta por encima de la tercera vértebra lumbar.",
+    "pregunta": "¿En qué rango vertebral se ubica anatómicamente el par de órganos responsables de filtrar la sangre?",
+    "clave": "última vértebra dorsal hasta por encima de la tercera vértebra lumbar",
+    "leak": 0.12
+  },
+  {
+    "celula_id": "0000088-42c6581ab976",
+    "celula": "El glomérulo es un agrupamiento de capilares glomerulares con presión hidrostática elevada (aprox. 60 mmHg) por el que se filtran grandes cantidades de líquido desde la sangre.",
+    "pregunta": "¿Qué estructura anatómica del riñón actúa como filtro principal debido a la alta presión que ejerce sobre los vasos sanguíneos?",
+    "clave": "glomérulo",
+    "leak": 0.14
+  },
+  {
+    "celula_id": "0000036-d74e6a4ea0d3",
+    "celula": "El borde externo de la pelvis renal se divide en cálices mayores.",
+    "pregunta": "¿Qué estructuras anatómicas se originan a partir de la periferia de la cavidad renal central?",
+    "clave": "cálices mayores",
+    "leak": 0.12
+  },
+  {
+    "celula_id": "0001307-4f58192a45c1",
+    "celula": "Cada nefrona está compuesta por un corpúsculo renal (formado por el glomérulo y la cápsula de Bowman) y un túbulo renal.",
+    "pregunta": "¿Qué dos elementos principales conforman la unidad funcional básica del riñón?",
+    "clave": "nefrona",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-ae39a88b50f1",
+    "celula": "Los riñones participan en el control del equilibrio acido-básico.",
+    "pregunta": "¿Qué función desempeñan los riñones respecto a la regulación del pH corporal?",
+    "clave": "equilibrio acido-básico",
+    "leak": 0.17
+  },
+  {
+    "celula_id": "0001296-5f0de0ce252a",
+    "celula": "La angiotensina II induce vasoconstricción directa y estimula la liberación de aldosterona, lo que promueve la reabsorción de sodio y agua en los túbulos renales, aumentando el volumen sanguíneo y la presión arterial.",
+    "pregunta": "¿Qué mecanismo hormonal explica el aumento de la presión arterial derivado de la retención de líquidos?",
+    "clave": "aldosterona",
+    "leak": 0.33
+  },
+  {
+    "celula_id": "0000987-010f697eab65",
+    "celula": "La nefrona es la unidad funcional básica del riñón, responsable de la filtración de la sangre y la producción de orina.",
+    "pregunta": "¿Cuál es el componente microscópico fundamental que se encarga de depurar el torrente sanguíneo y generar el líquido urinario?",
+    "clave": "nefrona",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-e5b166264aed",
+    "celula": "Las arteriolas aferente y eferente participan en la regulación de la presión hidrostática ajustando su resistencia.",
+    "pregunta": "¿Qué mecanismo estructural utilizan los vasos sanguíneos de entrada y salida del glomérulo para controlar la fuerza que empuja el líquido hacia el espacio de Bowman?",
+    "clave": "resistencia",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000995-0d91d64a9be5",
+    "celula": "El riñón activa el sistema renina-angiotensina-aldosterona (SRAA) liberando renina, lo que provoca la vasoconstricción y la retención de sodio para elevar la presión arterial.",
+    "pregunta": "¿Qué sistema neurohormonal específico (SRAA) activa el riñón liberando renina cuando cae la presión arterial?",
+    "clave": "SRAA",
+    "leak": 0.23
+  },
+  {
+    "celula_id": "0000036-d4b43ebb9d4b",
+    "celula": "El corte sagital del riñón muestra la corteza externa y las regiones internas de la médula.",
+    "pregunta": "¿Qué dos zonas principales se distinguen al observar una sección longitudinal de un riñón?",
+    "clave": "corteza externa y las regiones internas de la médula",
+    "leak": 0.14
+  },
+  {
+    "celula_id": "0000036-0e0dbc2560da",
+    "celula": "Los conductos colectores mayores vacían su contenido en la pelvis renal.",
+    "pregunta": "¿En qué estructura anatómica se vierten los conductos colectores mayores para continuar la recolección de orina?",
+    "clave": "pelvis renal",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000368-00ffec86c06e",
+    "celula": "El asa de Henle desciende hasta la médula renal y está constituida por una rama descendente y una rama ascendente; el segmento fino (rama descendente y parte inferior de la ascendente) tiene paredes muy finas, mientras que el segmento grueso (resto de la rama ascendente) vuelve a la corteza renal y tiene la pared engruesada.",
+    "pregunta": "¿Qué características estructurales distinguen a las porciones del bucle renal que penetran en la zona interna del riñón de aquellas que regresan hacia la zona externa?",
+    "clave": "paredes muy finas",
+    "leak": 0.07
+  },
+  {
+    "celula_id": "0000036-da63f2a7bee0",
+    "celula": "Los extremos distales de los capilares glomerulares coalescen para formar la arteriola eferente.",
+    "pregunta": "¿Qué estructura vascular se origina a partir de la fusión de las porciones terminales de los vasos sanguíneos dentro del glomérulo?",
+    "clave": "arteriola eferente",
+    "leak": 0.09
+  },
+  {
+    "celula_id": "0000036-947e26ef870f",
+    "celula": "Las fibras nerviosas simpáticas regulan la liberación de renina, el flujo sanguíneo renal y la reabsorción de sodio (Na+) en las células tubulares.",
+    "pregunta": "¿Qué sistema de control involuntario influye en la producción de renina, el riego sanguíneo de los riñones y la retención de sal?",
+    "clave": "simpáticas",
+    "leak": 0.2
+  },
+  {
+    "celula_id": "0001307-218c3e0eb7e7",
+    "celula": "El túbulo renal consta de segmentos específicos: túbulo contorneado proximal, asa de Henle, túbulo contorneado distal y conducto colector.",
+    "pregunta": "¿Qué estructuras anatómicas forman la vía de paso de la orina dentro de la nefrona y el riñón?",
+    "clave": "túbulo contorneado proximal, asa de Henle, túbulo contorneado distal y conducto colector",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-9c3f6c636174",
+    "celula": "La orina se forma en los riñones, pasa por los uréteres a la vejiga urinaria para su almacenamiento y se elimina a través de la uretra.",
+    "pregunta": "¿Por dónde sale el líquido residual del cuerpo?",
+    "clave": "uretra",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-abfc66773b14",
+    "celula": "Desde el túbulo proximal, el líquido filtrado discurre hacia el asa de Henle.",
+    "pregunta": "¿Por dónde pasa el filtrado glomerular justo después de dejar el túbulo contorneado proximal?",
+    "clave": "asa de Henle",
+    "leak": 0.3
+  },
+  {
+    "celula_id": "0000987-b27c7187bb8a",
+    "celula": "Las funciones principales de la nefrona incluyen la filtración glomerular, la reabsorción selectiva de agua y nutrientes, la secreción de desechos y la excreción de orina.",
+    "pregunta": "¿Qué procesos clave realiza la unidad funcional del riñón para limpiar la sangre y producir orina?",
+    "clave": "nefrona",
+    "leak": 0.18
+  },
+  {
+    "celula_id": "0000996-ad9cc8304ba5",
+    "celula": "El riñón regula la presión arterial mediante la liberación de hormonas vasodilatadoras, como la prostaglandina y el óxido nítrico, que reducen la resistencia vascular periférica.",
+    "pregunta": "¿Qué mecanismos químicos utiliza el órgano filtrador para bajar la tensión sanguínea?",
+    "clave": "vasodilatadoras",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-f9ecedf00b37",
+    "celula": "Los cálices menores recogen la orina de los túbulos de cada papila.",
+    "pregunta": "¿Qué estructura anatómica recibe el líquido urinario procedente de las papilas renales?",
+    "clave": "cálices menores",
+    "leak": 0.12
+  },
+  {
+    "celula_id": "0000996-66a100a2a93f",
+    "celula": "Los barorreceptores en los arteriolas aferentes del riñón detectan cambios en la presión de perfusión renal y ajustan la tasa de filtración glomerular para mantener la homeostasis.",
+    "pregunta": "¿Qué mecanismo intrínseco permite que el riñón mantenga constante la cantidad de sangre filtrada cuando la presión arterial fluctúa?",
+    "clave": "barorreceptores",
+    "leak": 0.38
+  },
+  {
+    "celula_id": "0000036-decc3e979a7c",
+    "celula": "La fisiología renal incluye funciones más allá de la regulación de la excreción de productos de desecho.",
+    "pregunta": "¿Qué otros roles desempeñan los riñones además de eliminar los residuos metabólicos?",
+    "clave": "regulación",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-2e339282f027",
+    "celula": "Los capilares peritubulares continúan hacia los vasos del sistema venoso que discurren paralelos a los vasos arteriolares.",
+    "pregunta": "¿Cuál es la trayectoria que siguen los capilares peritubulares una vez que han realizado su función?",
+    "clave": "sistema venoso",
+    "leak": 0.29
+  },
+  {
+    "celula_id": "0001296-c62270fc078e",
+    "celula": "La renina cataliza la conversión de angiotensinógeno en angiotensina I, la cual es convertida en angiotensina II por la enzima convertidora de angiotensina (ECA).",
+    "pregunta": "¿Qué sustancia se produce en el paso intermedio del proceso de activación del sistema renina-angiotensina, justo antes de que se forme el potente vasoconstrictor final?",
+    "clave": "angiotensina I",
+    "leak": 0.13
+  },
+  {
+    "celula_id": "0000036-123ae4788cdd",
+    "celula": "La circulación renal tiene dos lechos capilares en serie: los capilares glomerulares y los capilares peritubulares.",
+    "pregunta": "¿Qué estructura vascular especial caracteriza al flujo sanguíneo en el riñón en términos de su disposición?",
+    "clave": "dos lechos capilares en serie",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-83be104841b6",
+    "celula": "El riñón derecho suele estar más bajo que el izquierdo debido a la ocupación del espacio por el hígado.",
+    "pregunta": "¿Por qué el órgano urinario del lado derecho se encuentra en una posición inferior al del lado izquierdo?",
+    "clave": "hígado",
+    "leak": 0.25
+  },
+  {
+    "celula_id": "0000036-da3238475030",
+    "celula": "Los conductos colectores se van uniendo progresivamente formando conductos cada vez mayores.",
+    "pregunta": "¿Qué ocurre con el tamaño de los vasos que recogen la linfa a medida que avanzan hacia el tronco?",
+    "clave": "mayores",
+    "leak": 0.0
+  },
+  {
+    "celula_id": "0000036-ad58cbcde86c",
+    "celula": "Cada riñón humano contiene entre 800.000 y 1.000.000 nefronas.",
+    "pregunta": "¿Cuántas unidades funcionales básicas hay en cada uno de mis riñones?",
+    "clave": "800.000 y 1.000.000",
+    "leak": 0.33
+  },
+  {
+    "celula_id": "0000036-e27f2814d5be",
+    "celula": "La arteriola eferente forma una segunda red capilar compuesta por capilares peritubulares que rodean a los túbulos renales.",
+    "pregunta": "¿Qué tipo de red vascular se origina a partir de la arteriola eferente y cuál es su ubicación específica respecto a las estructuras tubulares del riñón?",
+    "clave": "capilares peritubulares",
+    "leak": 0.23
+  }
+]

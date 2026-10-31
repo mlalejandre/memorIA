@@ -1,0 +1,122 @@
+{
+  "fecha": "2026-10-24T23:30:32",
+  "n": 40,
+  "celulas": 82,
+  "metrics": {
+    "exacta": {
+      "hit1": 0.0,
+      "hit5": 0.0,
+      "hit18": 0.0,
+      "mrr": 0.0,
+      "ms": 0.1,
+      "llm": 0.0
+    },
+    "fts5": {
+      "hit1": 0.025,
+      "hit5": 0.175,
+      "hit18": 0.45,
+      "mrr": 0.118,
+      "ms": 0.4,
+      "llm": 0.0
+    },
+    "embeddings": {
+      "hit1": 0.325,
+      "hit5": 0.55,
+      "hit18": 0.925,
+      "mrr": 0.466,
+      "ms": 35.0,
+      "llm": 0.0
+    },
+    "emb sin umbral": {
+      "hit1": 0.325,
+      "hit5": 0.55,
+      "hit18": 0.925,
+      "mrr": 0.466,
+      "ms": 3.0,
+      "llm": 0.0
+    },
+    "árbol": {
+      "hit1": 0.3,
+      "hit5": 0.55,
+      "hit18": 0.75,
+      "mrr": 0.38,
+      "ms": 4.0,
+      "llm": 0.0
+    },
+    "híbrido": {
+      "hit1": 0.325,
+      "hit5": 0.55,
+      "hit18": 0.925,
+      "mrr": 0.466,
+      "ms": 0.0,
+      "llm": 0.0
+    }
+  },
+  "fusion": {
+    "actual (config)": {
+      "hit1": 0.225,
+      "hit5": 0.475,
+      "hit18": 0.9,
+      "mrr": 0.344,
+      "ms": 0.0,
+      "llm": 0.0
+    },
+    "igual 1/1/1/1": {
+      "hit1": 0.15,
+      "hit5": 0.45,
+      "hit18": 0.9,
+      "mrr": 0.297,
+      "ms": 0.0,
+      "llm": 0.0
+    },
+    "emb x3": {
+      "hit1": 0.225,
+      "hit5": 0.475,
+      "hit18": 0.9,
+      "mrr": 0.344,
+      "ms": 0.0,
+      "llm": 0.0
+    },
+    "emb x3 · fts .5 · árbol .5": {
+      "hit1": 0.225,
+      "hit5": 0.55,
+      "hit18": 0.9,
+      "mrr": 0.359,
+      "ms": 0.0,
+      "llm": 0.0
+    },
+    "emb x2 · sin fts": {
+      "hit1": 0.25,
+      "hit5": 0.5,
+      "hit18": 0.925,
+      "mrr": 0.378,
+      "ms": 0.0,
+      "llm": 0.0
+    },
+    "solo embeddings": {
+      "hit1": 0.325,
+      "hit5": 0.55,
+      "hit18": 0.925,
+      "mrr": 0.466,
+      "ms": 0.0,
+      "llm": 0.0
+    }
+  },
+  "recall": {
+    "encontrado": 0.95,
+    "correcto": 0.95,
+    "ms_p50": 1000,
+    "ms_p95": 1400,
+    "llm": 1.0,
+    "candidatos_hit18": 0.975,
+    "fallos_recuperacion": 0,
+    "fallos_seleccion": 0
+  },
+  "juez": {},
+  "pesos": {
+    "exacta": 0.0,
+    "fts5": 0.0,
+    "embeddings": 1.0,
+    "árbol": 0.0
+  }
+}
