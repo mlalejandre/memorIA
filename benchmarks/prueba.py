@@ -1654,7 +1654,7 @@ class _StubAgent:
     def status(self) -> dict:
         return {"ok": True}
 
-    def chat(self, text: str) -> dict:
+    def chat(self, text: str, think: str | None = None) -> dict:   # [PARCHE25] la consola reenvía el modo de pensamiento
         return {"answer": "ok"}
 
 

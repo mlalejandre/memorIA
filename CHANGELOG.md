@@ -1,7 +1,12 @@
 # Changelog
 
 <!-- [PARCHE19] -->
-## Unreleased
+## 0.3.0a4 (2026-10-30)
+<!-- [PARCHE25] -->
+Consolidation of patches 19-24. Same defaults and answers as 0.3.0a3; the measurement is now reproducible and thinking is an option.
+- Patch 24 results: one request at a time reproduces the base (69.6 % correct, 6.1 % invention; paired with the old stochastic measurement 35 better / 34 worse, p = 1.0) and a re-run without cache changed 0 of 99 verdicts. Automatic thinking (`AGENT_THINK=auto`) thought on 425 of 1,986 questions: correct 69.6 → 69.9 % (27 better, 22 worse, p = 0.57), temporal 68.2 → 72.3 % (p = 0.029), invention unchanged; 11.3 s vs 2.1 s per answer that thinks. Not adopted as default; `off` stays the default and `auto`/`on` are user options. Durations ("how long ago…") got worse when thinking: the model counted from the prompt's current date instead of the conversation date.
+- Fixed: the security suite's stub agent did not accept the thinking mode forwarded by the console (`POST /api/chat` returned 400 in the benchmark only; the real agent was fine).
+- Consolidation run: full emulated suite, LoCoMo reproduced from cache, own corpus re-measured at 100,108 facts, embedding-call latency measured separately. Frozen baselines `experiment/baseline_locomo_v0.3.0a4.json` and `experiment/baseline_v0.3.0a4.json`.
 <!-- [PARCHE24] -->
 - Optional thinking for the agent's final answer (`AGENT_THINK`: `off` default, `auto`, `on`; `src/pensar.py`). In `auto` the agent thinks only when the question asks it to compute something from memory (dates and durations, counts, combining facts about two people or moments) and skips direct and inference questions; every decision carries its reason. Ingestion, retrieval and judges are unchanged.
 - Web console: a "🧠 Pensar" selector (No / Auto / Siempre) next to Send, remembered per browser, a "thinking" status while the model reasons and the reason in the answer metadata. `/api/chat` and `/api/chat/stream` accept `think`.

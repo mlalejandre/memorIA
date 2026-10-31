@@ -2,7 +2,7 @@
 
 > Hierarchical long-term memory for local LLMs: an adaptive-depth semantic tree (up to 7 levels) of nodes plus atomic "cells", an autonomous background maintenance loop, hybrid retrieval and per-fact provenance. **Python standard library only (`numpy` is optional).**
 >
-> ⚠️ **Status: alpha (v0.3.0a3).** It works and is tested, but it is a research project: see *Known limitations* below.
+> ⚠️ **Status: alpha (v0.3.0a4).** It works and is tested, but it is a research project: see *Known limitations* below.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
@@ -26,31 +26,32 @@ The agent keeps **two memories queried in parallel** on every message:
 - **Conversation → memory.** Facts in what the user says are extracted by the LLM into atomic statements and queued for storage in the background (`LTM_INGEST_USER`).
 - **Provenance.** Every cell keeps its source (book/paper detected from the header, or the timestamped conversation) and answers cite it.
 - **Local web console** at `http://127.0.0.1:8765` (UI in Spanish): chat, live pipeline, tree viewer, visual explorer/editor of the ontology, bulk ingestion of chapters/papers, diagnostics.
+- **Optional thinking.** A "🧠 Pensar" selector next to Send (No / Auto / Siempre, default from `AGENT_THINK`) lets the model reason before the final answer. In Auto it thinks only when the question asks it to compute from memory (dates and durations, counts, comparisons) and shows why; it is about five times slower per answer that thinks.
 
 - **Tree navigation.** Retrieval also descends the tree with a beam search (`MEM_NAV`, `MEM_BEAM`). By default the branch choice is **vectorial/lexical, with no LLM call** (`MEM_NAV_LLM=0`); set `MEM_NAV_LLM=1` to let the LLM pick branches (slower, up to `MEM_NAV_MAX_CALLS` calls).
 - **Episodic memory.** Every message is also stored verbatim in `memoria.db` (`episodes` + FTS5) and never forgotten or summarised; relevant literal snippets that are no longer in the live short-term memory are injected into the prompt (`EPI_ENABLED`, `EPI_LOOKUP_K`). Search it at `/api/episodes?q=...`.
 
 - **Embeddings (optional, GPU 2).** A second `llama-server --embeddings` (bge-m3 by default, port `SERVER_PORT_GPU2`=8089) feeds a fifth RRF ranking for cells and episodes, nearest-neighbour placement in `store()` (0–4 LLM calls instead of 7), cheaper tree navigation and cosine-based dedupe. Vectors live in `memoria.db`; if the server is down everything works as before. `pip install numpy` (optional) speeds up the cosine search. Measure it with `python3 scripts/evaluar.py`.
 
-## 🎯 Objective and measured results (v0.3.0a3)
-<!-- [PARCHE14] -->
+## 🎯 Objective and measured results (v0.3.0a4)
+<!-- [PARCHE14] --> <!-- [PARCHE25] -->
 
 The project is measured end to end against one objective: **the agent answers correctly what is in its memory, does not invent what is not, and keeps doing so as memory grows.** It is measured on two exams: our own synthetic corpus, and the public LoCoMo benchmark, which we did not write.
 
 ### Own corpus (synthetic, written while developing)
 
 <!-- resultados-propios -->
-| Metric (real agent, LLM-judged) | Target | 108 facts | 100,108 facts (×927) |
+| Metric (real agent, LLM-judged) | Target | v0.3.0a2 · 100,108 facts | v0.3.0a4 · 100,108 facts |
 |---|---|---|---|
-| Correct on questions that require memory (40 user questions) | ≥ 95 % | 100 % | **97.5 %** |
-| Correct, all 112 questions | ≥ 95 % | 100 % | **99.1 %** |
-| Invents a personal fact that is not stored (31 near-miss questions) | ≤ 5 % | 0 % (0/31) | **3.2 % (1/31)** |
-| Retrieval latency P95 | ≤ 1.5 s | 305 ms | **357 ms** |
-| First query after learning a new fact | ≤ 1.5 s | — | **332 ms** |
+| Correct on questions that require memory (40 user questions) | ≥ 95 % | 97.5 % | **100.0 %** |
+| Correct, all 112 questions | ≥ 95 % | 99.1 % | **99.1 %** |
+| Invents a personal fact that is not stored (31 near-miss questions) | ≤ 5 % | 3.2 % (1/31) | **3.2 % (1/31)** |
+| Retrieval latency P95 | ≤ 1.5 s | 357 ms | **446 ms** |
+| First query after learning a new fact | ≤ 1.5 s | 332 ms | **382 ms** |
 
-Without memory the same agent gets 2.5 % of the user questions right.
+At 108 facts (v0.3.0a2): 100 % correct, 0/31 invented, P95 305 ms. Without memory the same agent gets 2.5 % of the user questions right.
 
-Measured on 2026-10-29 with v0.3.0a2 (10 injected facts, attribution rule).
+Measured on 2026-10-30 with v0.3.0a4 (default configuration: 10 injected facts, attribution rule).
 <!-- /resultados-propios -->
 
 Measured with `nail-35b` (answers and judge) and `bge-m3` embeddings, default configuration, numpy installed. Distractors are third-party facts with the same attributes as the user's (pets, cities, allergies, bosses, blood types...). Baseline: [`experiment/baseline_v0.3.0a2.json`](experiment/baseline_v0.3.0a2.json).
@@ -59,17 +60,20 @@ Measured with `nail-35b` (answers and judge) and `bge-m3` embeddings, default co
 
 [LoCoMo](https://github.com/snap-research/locomo) (Maharana et al., ACL 2024): 10 long conversations between two people (5,882 turns), ingested through the real pipeline (`extract_facts` → `store()` + episodic memory), 1,540 questions with a reference answer and 446 adversarial ones that attribute to a person something that happened to the other.
 
-| Metric (real agent, LLM-judged, 1,986 questions) | Target | v0.3.0a2 | v0.3.0a3 |
+| Metric (real agent, LLM-judged, 1,986 questions) | Target | v0.3.0a3 | v0.3.0a4 ¹ |
 |---|---|---|---|
-| Correct, categories 1–4 | ≥ 95 % | 61.9 % [59.4–64.3] | **70.2 %** [67.9–72.4] |
-| · single-hop / temporal / multi-hop / inference | | 72.7 / 63.2 / 35.5 / 40.6 % | 80.3 / 68.8 / 47.5 / 53.1 % |
-| Invents on adversarial questions (category 5) | ≤ 5 % | 7.0 % [4.9–9.7] | **5.8 %** [4.0–8.4] |
-| Retrieval latency P95 (facts + episodes) | ≤ 1.5 s | 115 ms | 397 ms ² |
+| Correct, categories 1–4 | ≥ 95 % | 70.2 % [67.9–72.4] | **69.6 %** [67.3–71.9] |
+| · single-hop / temporal / multi-hop / inference | | 80.3 / 68.8 / 47.5 / 53.1 % | 80.6 / 68.2 / 47.9 / 41.7 % |
+| Invents on adversarial questions (category 5) | ≤ 5 % | 5.8 % [4.0–8.4] | **6.1 %** [4.2–8.7] |
+| Verdicts that change when nothing changes (re-run) | as low as possible | 7.2 % | **0 %** (0/99) |
+| Retrieval latency P95 (facts + episodes) | ≤ 1.5 s | 397 ms ² | 475 ms ³ |
 | Correct without memory (reference) | — | 3.3 % | 3.3 % |
 
+¹ Same system and defaults as v0.3.0a3; what changed is the measurement. Answers are now generated at temperature 0, one request at a time and without the server prompt cache, and judged by one deterministic vote, so a re-run reproduces every answer and verdict (cached in `experiment/locomo_cache/banco.sqlite`). Paired with the old stochastic measurement the difference is noise (35 questions better, 34 worse, p = 1.0). Frozen baseline: [`experiment/baseline_locomo_v0.3.0a4.json`](experiment/baseline_locomo_v0.3.0a4.json).
 ² Measured over a slower network link to the embedding server (≈ +200 ms per query; see the own-corpus note).
+³ 114 ms on 2026-10-30 at night, 475 ms in every run that afternoon with the same code; almost all of it is the query embedding. Under investigation.
 <!-- latencia-respuesta -->
-Answer time per question (LLM included, one at a time, 40 LoCoMo questions, 2026-10-29): median 1.7 s / P95 2.4 s with 20 episodes vs 1.4 s / 2.5 s with 5 (+0.3 s median). Not part of the objective; lower `EPI_PROMPT_K` to trade accuracy for speed.
+Answer time per question (LLM included, one request at a time as in real use, 1,986 LoCoMo questions, 2026-10-30): median 2.1 s / P95 3.5 s. With two requests in parallel it rises to 3.0 s / 6.0 s. With the optional thinking mode (`AGENT_THINK`), questions that think take 11.3 s median. Not part of the objective; lower `EPI_PROMPT_K` to trade accuracy for speed.
 <!-- /latencia-respuesta -->
 
 **LoCoMo still misses the objective.** For orientation only, published LLM-judged scores on categories 1–4 (Mem0 paper, arXiv 2504.19413, GPT-4o-mini, a different judge and prompts, so not directly comparable): full-context 72.9 %, Mem0 66.9 %, Zep 66.0 %, best RAG 61.0 %, LangMem 58.1 %. Some adversarial labels are wrong (the asked person did say it) and the judge sometimes counts a corrected premise as invention, so 5.8 % slightly overstates real invention.
@@ -80,7 +84,7 @@ HMEM_ESCALA="1000,10000" python3 benchmarks/prueba.py --live --only escala   # f
 python3 benchmarks/prueba.py --live --only locomo                            # first run ingests (~40 min), then cached
 ```
 
-What the measurements decided (details in [CHANGELOG](CHANGELOG.md)): embeddings-only retrieval beats the full hybrid fusion and is 2.7× faster; an LLM reranker improves ranking but not the objective, so it is off by default; uncertain memories are injected with an explicit caution; an attribution rule in the prompt halved invention on LoCoMo (12.8 % → 6.3 %, p < 0.001); injecting 10 facts instead of 6 raised LoCoMo accuracy (59.7 % → 61.9 %, p = 0.003) without raising invention; showing 20 verbatim episodes instead of 5 raised it again (61.9 % → 70.2 %, p < 0.001; multi-hop 35.5 % → 47.5 %), also without raising invention.
+What the measurements decided (details in [CHANGELOG](CHANGELOG.md)): embeddings-only retrieval beats the full hybrid fusion and is 2.7× faster; an LLM reranker improves ranking but not the objective, so it is off by default; uncertain memories are injected with an explicit caution; an attribution rule in the prompt halved invention on LoCoMo (12.8 % → 6.3 %, p < 0.001); injecting 10 facts instead of 6 raised LoCoMo accuracy (59.7 % → 61.9 %, p = 0.003) without raising invention; showing 20 verbatim episodes instead of 5 raised it again (61.9 % → 70.2 %, p < 0.001; multi-hop 35.5 % → 47.5 %), also without raising invention. Measured and rejected since then (flags kept, off by default): question decomposition, per-day episode diversity, a second retrieval pass, temporal anchoring at ingestion and forcing direct answers. Thinking before answering gave +3.5 pp on a 397-question sample (p = 0.08) at five times the answer time, and the automatic mode (+0.3 pp overall, temporal +4.1 pp) did not meet the rule either, so thinking is an option the user chooses, off by default. Every experiment and its pre-registered rule is in [`experiment/LEDGER.md`](experiment/LEDGER.md).
 
 <!-- [PARCHE9] -->
 ## 🚀 Quick start
@@ -222,8 +226,8 @@ python3 benchmarks/prueba.py --live --only locomo   # public benchmark LoCoMo (r
 
 ## ⚠️ Known limitations
 
-- **On a public benchmark the objective is not met**: LoCoMo correct answers are 70.2 % (target 95 %) and multi-hop questions that need several sessions are the weakest (47.5 %); half of their evidence ranks below position 50 for a single query. Our own corpus (≈ 100 %) overstates quality: it is synthetic and was written while developing the system.
-- Attributing one person's fact to another (the "younger daughter" error) is the main source of invention: halved by the attribution rule but still 5.8 % on LoCoMo (target 5 %), mostly read from verbatim episodes.
+- **On a public benchmark the objective is not met**: LoCoMo correct answers are 69.6 % (target 95 %) and multi-hop and inference questions are the weakest (47.9 % and 41.7 %); half of their evidence ranks below position 50 for a single query. Our own corpus (≈ 100 %) overstates quality: it is synthetic and was written while developing the system.
+- Attributing one person's fact to another (the "younger daughter" error) is the main source of invention: halved by the attribution rule but still 6.1 % on LoCoMo (target 5 %), mostly read from verbatim episodes.
 - The relevance gate does not help on conversational data: on LoCoMo it marks all 446 adversarial questions as confident (similarity overlaps with answerable ones), so the prompt rule is the only barrier.
 - Ingesting conversations between two people collapses the tree into 3–13 nodes (placement by embeddings), and temporal supersession produced 16 replacements in LoCoMo, several of them between different facts about the same topic.
 - The scale test bulk-inserts distractors and bypasses `store()`; LoCoMo exercises `store()` but only with ≈ 500 facts per memory. Ingestion and the sleep cycle at 100k real facts are untested.
