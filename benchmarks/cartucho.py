@@ -42,7 +42,7 @@ os.environ.setdefault("HMEM_FIXED_NOW", "31/10/2026 12:00")
 
 import config as C  # noqa: E402
 
-MODES = ("sin memoria", "no", "auto", "siempre")
+MODES = ("sin memoria", "no", "auto", "siempre", "atrib")   # [PARCHE29] atrib = no + ATTRIB_EVENTS
 
 POS_JUDGE = (
     "Eres un evaluador. Se hizo a un asistente con memoria una pregunta sobre unos documentos que había guardado, y "
@@ -148,7 +148,13 @@ def paired(rows: list[dict[str, Any]], a: str, b: str) -> dict[str, Any]:
     ids = [i for i in ra if i in rb]
     up = sum(1 for i in ids if not good(ra[i]) and good(rb[i]))
     down = sum(1 for i in ids if good(ra[i]) and not good(rb[i]))
-    return {"n": len(ids), "mejoran": up, "empeoran": down, "p": sign_p(down, up)}
+    out = {"n": len(ids), "mejoran": up, "empeoran": down, "p": sign_p(down, up)}
+    for name, sel in (("positivas", lambda r: r["tipo"] != "trampa"), ("trampas", lambda r: r["tipo"] == "trampa")):
+        ii = [i for i in ids if sel(ra[i])]   # [PARCHE29] desglose
+        u = sum(1 for i in ii if not good(ra[i]) and good(rb[i]))
+        d = sum(1 for i in ii if good(ra[i]) and not good(rb[i]))
+        out[name] = {"n": len(ii), "mejoran": u, "empeoran": d, "p": sign_p(d, u)}
+    return out
 
 
 VARIANTS = ("actual", "actual2", "autocontenidos")   # actual2 = otra ingesta igual: ruido de la ingesta
@@ -235,7 +241,7 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
         lines = fact_lines(ans) if found else []
         n_epi_prompt = max(1, int(getattr(C, "EPI_PROMPT_K", 5)))
         ctx_text = "\n".join(lines) + "\n" + "\n".join(str(e.get("text", "")) for e in epi[:n_epi_prompt])
-        ret[q["id"]] = {"system": system, "ms": ms, "hechos": lines,
+        ret[q["id"]] = {"system": system, "ms": ms, "hechos": lines, "ltm": ltm, "epi": epi,
                         "en_memoria": has_keys(all_text, q["claves"]), "en_prompt": has_keys(ctx_text, q["claves"])}
     lat = sorted(v["ms"] for v in ret.values())
     p95 = lat[int(0.95 * (len(lat) - 1))] if lat else 0.0
@@ -261,6 +267,14 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
         for k, (mode, q) in enumerate(jobs, 1):
             if mode == "sin memoria":
                 system, th, why = BASE_PROMPT.format(now=now_str()), False, "sin memoria"
+            elif mode == "atrib":   # [PARCHE29] mismo contexto, con la regla de sucesos y documentos
+                prev = getattr(C, "ATTRIB_EVENTS", False)
+                C.ATTRIB_EVENTS = True
+                try:
+                    system = Agent._build_system(None, {}, ret[q["id"]]["ltm"], ret[q["id"]]["epi"])
+                finally:
+                    C.ATTRIB_EVENTS = prev
+                th, why = False, "regla de sucesos"
             else:
                 system = ret[q["id"]]["system"]
                 th, why = pensar.decide(q["q"], {"no": "off", "auto": "auto", "siempre": "on"}[mode])
@@ -295,8 +309,8 @@ def exam(tree: Any, label: str, qs: list[dict[str, Any]], modes: list[str], chat
               f"inventa {s['inventa']}/{s['n_neg']} · mediana {s['t_p50']:.1f} s · piensan {s['piensan']} · "
               f"fallos: {causes}")
         print(f"   {'':<12} por tipo: {types}")
-    pairs = {f"{x}→{y}": paired(rows, x, y) for x, y in (("sin memoria", "no"), ("no", "auto"), ("no", "siempre"))
-             if x in modes and y in modes}
+    pairs = {f"{x}→{y}": paired(rows, x, y) for x, y in (("sin memoria", "no"), ("no", "auto"), ("no", "siempre"),
+                                                          ("no", "atrib")) if x in modes and y in modes}
     for k, v in pairs.items():
         print(f"   pareado {k}: n={v['n']} · mejoran {v['mejoran']} · empeoran {v['empeoran']} · p={v['p']:.3f}")
     srcs: dict[str, int] = {}

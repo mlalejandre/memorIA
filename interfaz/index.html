@@ -283,7 +283,7 @@ pre{background:var(--inp);border:1px solid var(--bd);border-radius:8px;padding:1
     </div>
     <div class="modal-b">
       <p style="font-size:.75rem;color:var(--mu)">Pega texto técnico masivo. El sistema fragmentará y colocará cada afirmación en la rama correspondiente:</p>
-      <input type="text" id="ingest-src" placeholder="Fuente bibliográfica (Ej: Fisiología Médica Guyton Cap. 25)" style="background:var(--inp);border:1px solid var(--bd);padding:8px;border-radius:6px;color:var(--tx);font-size:.82rem" />
+      <input type="text" id="ingest-src" placeholder="Fuente de ESTE documento (Ej: Fisiología Médica Guyton Cap. 25) · una por documento" style="background:var(--inp);border:1px solid var(--bd);padding:8px;border-radius:6px;color:var(--tx);font-size:.82rem" />
       <textarea id="ingest-txt" style="min-height:240px" placeholder="Pega aquí el contenido completo..."></textarea>
       <div class="row" style="justify-content:flex-end">
         <span id="ingest-progress" style="flex:1;font-size:.75rem;color:var(--mu);font-family:var(--mono)"></span>
@@ -640,6 +640,11 @@ async function submitIngest() {
   const txt = $('ingest-txt').value.trim();
   const src = $('ingest-src').value.trim();
   if(!txt) { alert('Pega texto para ingestar'); return; }
+  // [PARCHE29] una fuente por documento: en el parche 27 el segundo artículo heredó la fuente del primero y el
+  // agente mezcló los dos sucesos. Sin fuente, o con la misma de la ingesta anterior, se pide confirmación.
+  if(!src && !confirm('No has indicado la fuente de este documento. Sin fuente, el agente no podrá distinguirlo de otros.\n\n¿Ingestar igualmente?')) return;
+  if(src && window._lastIngestSrc === src && window._lastIngestTxt !== txt &&
+     !confirm('La fuente «' + src + '» es la misma que la del documento anterior, pero el texto es distinto.\n\nSi es otro documento, cancela y escribe su propia fuente. ¿Ingestar con la misma fuente?')) return;
   const prog = $('ingest-progress'), btn = $('ingest-btn');
   btn.disabled = true;
   prog.textContent = 'Iniciando ingesta...';
@@ -659,7 +664,9 @@ async function submitIngest() {
   if(result) {
     alert('✓ Ingesta completada: ' + result.facts + ' hechos registrados en el árbol.\n📌 Fuente: ' + result.source);
     closeModal('modal-ingest');
+    window._lastIngestSrc = src; window._lastIngestTxt = txt;   // [PARCHE29]
     $('ingest-txt').value = '';
+    $('ingest-src').value = '';   // [PARCHE29] la fuente no se arrastra al siguiente documento
   }
   poll();
 }

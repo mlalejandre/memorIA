@@ -2,6 +2,10 @@
 
 <!-- [PARCHE19] -->
 ## Unreleased
+<!-- [PARCHE29] -->
+- Web console, document ingestion: the source field is cleared after each document, and the console asks for confirmation when a document has no source or reuses the previous document's source with different text. In patch 27 the second article inherited the first one's source and the agent mixed the two events.
+- `ATTRIB_EVENTS` (default `0`, experimental): a prompt rule that extends attribution from people to events, dates and documents, and asks the agent to say a requested figure, name, cause or date is not recorded instead of completing it from general knowledge. The cartridge exam gains the mode `atrib` (same context, rule on).
+- Patch 28 results (each text ingested with its own source into temporary memories): correct 85.3 % and 88.2 % in two identical ingestions (77.9 % in the patch 27 cartridge, whose facts all carried the first article's source: 7 better, 2 worse), traps invented 3/15 and 2/15. Self-contained facts: 86.8 %, 2/15 (3 better, 2 worse vs current; two identical ingestions already differ in 9 questions); not adopted, `DOC_SELF_CONTAINED` stays `0`.
 <!-- [PARCHE28] -->
 - Self-contained facts for document ingestion (`DOC_SELF_CONTAINED`, default `0`, `src/documentos.py`): each fact must name its event or subject and the absolute date when the text allows, with the document title and the end of the previous chunk as context. Only the console's document ingestion uses it; conversation ingestion (and LoCoMo) are unchanged.
 - The cartridge exam can ingest texts itself into temporary memories (`--textos "path=source;..."`, variants `actual`, `actual2` (a second identical ingestion, to see how much ingestion alone varies) and `autocontenidos`), so no cartridge is touched. The two source texts are in `experiment/textos/` (CC BY-SA 4.0, attribution in `FUENTES.md`).

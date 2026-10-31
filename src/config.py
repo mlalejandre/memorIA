@@ -131,6 +131,8 @@ AGENT_THINK_EXTRA_TOKENS = _int("AGENT_THINK_EXTRA_TOKENS", "4096")
 # [PARCHE28] ingesta de documentos (panel de la consola) con hechos autocontenidos: suceso/sujeto y fecha absoluta
 # en cada hecho (ver src/documentos.py). La ingesta de conversaciones no cambia.
 DOC_SELF_CONTAINED = _flag("DOC_SELF_CONTAINED", "0")
+# [PARCHE29] regla de atribución a sucesos y documentos en el prompt del agente (ver agente.EVENT_RULE)
+ATTRIB_EVENTS = _flag("ATTRIB_EVENTS", "0")
 
 # ============================================================
 # MEMORIA A CORTO PLAZO (STM)

@@ -47,6 +47,15 @@ DIRECT_RULE = (
     "alternativas que no responden a la pregunta. Si el dato no consta o pertenece a otra persona, esa es la primera "
     "frase.")
 
+# [PARCHE29] atribución a sucesos y documentos (ATTRIB_EVENTS=1, experimental). Parches 27-28 (cartucho «santander»):
+# el agente atribuía datos de un suceso al otro («el incendio de 1941 lo provocó el vapor Cabo Machichaco») y,
+# cuando faltaba el dato, lo completaba con lo que creía saber («un cigarrillo mal apagado»).
+EVENT_RULE = (
+    "Sucesos y documentos: cada hecho de la memoria larga lleva su Fuente. Antes de responder, comprueba que el dato "
+    "pertenece al suceso, la fecha o el documento por el que se pregunta; si en la memoria corresponde a otro suceso "
+    "u otra fecha, dilo y corrige la premisa. Si el dato concreto que se pide (una cifra, un nombre, una causa, una "
+    "fecha) no aparece en la memoria, di que no consta en vez de completarlo con lo que creas saber.")
+
 
 def now_str() -> str:
     """[PARCHE22] Fecha actual del prompt. HMEM_FIXED_NOW la congela (benchmark reproducible y cacheable)."""
@@ -306,6 +315,8 @@ class Agent:
         parts = [BASE_PROMPT.format(now=now_str())]  # [PARCHE22]
         if getattr(C, "ANSWER_DIRECT", False):
             parts.append(DIRECT_RULE)
+        if getattr(C, "ATTRIB_EVENTS", False):   # [PARCHE29]
+            parts.append(EVENT_RULE)
         if stm.get("summaries"):
             parts.append("\n## Resumen de la conversación previa (memoria corta)")
             for s in stm["summaries"]:

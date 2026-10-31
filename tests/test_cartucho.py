@@ -116,3 +116,25 @@ class TestDocumentos(unittest.TestCase):  # [PARCHE28]
         b = [mk("1", "directa", True), mk("2", "directa", True), mk("3", "trampa", False)]
         pv = cartucho.paired_variants(a, b)
         self.assertEqual((pv["todas"]["mejoran"], pv["positivas"]["mejoran"], pv["trampas"]["mejoran"]), (2, 1, 1))
+
+
+class TestEventRule(unittest.TestCase):  # [PARCHE29]
+    def test_rule_only_when_enabled(self):
+        from agente import Agent, EVENT_RULE
+        with mock.patch.object(C, "ATTRIB_EVENTS", False):
+            self.assertNotIn(EVENT_RULE, Agent._build_system(None, {}, {"found": False}, None))
+        with mock.patch.object(C, "ATTRIB_EVENTS", True):
+            self.assertIn(EVENT_RULE, Agent._build_system(None, {}, {"found": False}, None))
+
+    def test_paired_breakdown(self):
+        rows = [{"id": "1", "modo": "no", "tipo": "trampa", "veredicto": True},
+                {"id": "1", "modo": "atrib", "tipo": "trampa", "veredicto": False},
+                {"id": "2", "modo": "no", "tipo": "directa", "veredicto": True},
+                {"id": "2", "modo": "atrib", "tipo": "directa", "veredicto": False}]
+        p = cartucho.paired(rows, "no", "atrib")
+        self.assertEqual((p["trampas"]["mejoran"], p["positivas"]["empeoran"]), (1, 1))
+
+    def test_ingest_panel_guards_source(self):
+        html = (ROOT / "interfaz" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("$('ingest-src').value = '';", html)
+        self.assertIn("_lastIngestSrc", html)

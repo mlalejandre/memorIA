@@ -190,6 +190,7 @@ Everything is an environment variable or a line in `.env` (see [`.env.example`](
 | `AGENT_THINK` | `off` | thinking before the final answer: `off`, `auto` (the agent thinks only for date, counting and comparison questions, not durations; the reason is shown) or `on`; the web console can override it per message |
 | `AGENT_THINK_EXTRA_TOKENS` | `4096` | tokens added to the answer limit when the agent thinks (reasoning counts against it) |
 | `DOC_SELF_CONTAINED` | `0` | document ingestion (console panel) writes self-contained facts: each names its event or subject and the absolute date when the text allows; conversation ingestion is unchanged |
+| `ATTRIB_EVENTS` | `0` | experimental prompt rule: check that a fact belongs to the event, date or document asked about (using its source) and say it is not recorded instead of filling the gap |
 | `LLM_CACHE_PROMPT` | `1` | reuse the server's KV cache for a shared prompt prefix (faster; with several slots, temperature-0 answers may vary slightly) |
 | `EPI_DIVERSITY` / `EPI_PER_DAY` | `off` / `3` | experimental: at most N prompt episodes per day, from a deeper candidate pool |
 | `LTM_SECOND_PASS` | `0` | experimental: one LLM call turns what the first search found into queries for what is missing (same budget) |
